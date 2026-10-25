@@ -7,16 +7,19 @@ adb install -r "$APK"
 adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS
 adb logcat -c
 
-# Taps the centre of the first on-screen element whose text is exactly $1
+# Taps the centre of the topmost element whose text is exactly $1
 tap_text() {
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1
   adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
   b=$(python3 - "$1" <<'PY'
 import re,sys
 x=open('ui.xml',encoding='utf-8').read()
+hit=None
+# The last match is the one drawn on top (the round covers the garden)
 for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',x):
     if m.group(1)==sys.argv[1]:
-        a,b,c,d=map(int,m.groups()[1:]);print((a+c)//2,(b+d)//2);break
+        a,b,c,d=map(int,m.groups()[1:]);hit=((a+c)//2,(b+d)//2)
+if hit: print(*hit)
 PY
 )
   if [ -n "$b" ]; then adb shell input tap $b; echo "tapped '$1' at $b"; else echo "::warning::no '$1' on screen"; fi
