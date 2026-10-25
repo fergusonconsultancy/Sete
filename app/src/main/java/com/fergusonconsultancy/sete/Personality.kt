@@ -85,13 +85,16 @@ object Personality {
 
     operator fun get(kind: String?): Character = byKind[kind] ?: other
 
+    /** The plant's own voice when identification wrote one, otherwise its kind's. */
+    fun of(p: Plant): Character = p.voice ?: this[p.kind]
+
     private fun pick(list: List<String>, p: Plant, salt: Int): String {
         val day = Calendar.getInstance().get(Calendar.DAY_OF_YEAR)
         return list[Math.floorMod(p.id.hashCode() + day * 7 + salt, list.size)]
     }
 
     /** Steady through the day, so a line doesn't change every time the screen redraws. */
-    fun thirsty(p: Plant) = pick(this[p.kind].thirsty, p, 0)
-    fun thanks(p: Plant) = pick(this[p.kind].thanks, p, (System.currentTimeMillis() / 1000).toInt())
-    fun damp(p: Plant) = pick(this[p.kind].damp, p, (System.currentTimeMillis() / 1000).toInt())
+    fun thirsty(p: Plant) = pick(of(p).thirsty, p, 0)
+    fun thanks(p: Plant) = pick(of(p).thanks, p, (System.currentTimeMillis() / 1000).toInt())
+    fun damp(p: Plant) = pick(of(p).damp, p, (System.currentTimeMillis() / 1000).toInt())
 }

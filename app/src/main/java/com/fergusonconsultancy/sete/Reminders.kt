@@ -161,7 +161,7 @@ object Reminders {
 
         val shown = thirsty.take(8)
         shown.forEach { (p, s) ->
-            val k = Kinds[p.kind]
+            val k = p.k
             val line = Rhythm.dueText(s) + if (p.spot.isNotBlank()) " · ${p.spot}" else ""
             val voice = Personality.thirsty(p)
             val extras = android.os.Bundle().apply { putString("plantId", p.id) }

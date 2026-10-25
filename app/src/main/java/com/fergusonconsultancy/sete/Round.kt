@@ -109,7 +109,7 @@ class RoundView(
 
     private fun card(p: Plant): View {
         val s = Rhythm.standing(p)
-        val ch = Personality[p.kind]
+        val ch = Personality.of(p)
         val dm = ctx.resources.displayMetrics
         // The stage's real size once laid out; before that, the screen less the bars
         val sw = stage.width.takeIf { it > 0 } ?: (dm.widthPixels - insets[0] - insets[2] - ctx.px(44))

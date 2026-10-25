@@ -112,6 +112,41 @@ enum class Light(val label: String, val factor: Double, val detail: String) {
 }
 
 /** What the pot is made of changes how fast the soil dries. */
+/** Care written for one plant when it was identified from its photo, for kinds Sete doesn't list. */
+data class Care(val label: String, val latin: String, val winter: Float, val toxic: Boolean?, val how: String, val cue: String, val pets: String) {
+    fun toJson(): JSONObject = JSONObject().put("label", label).put("latin", latin).put("winter", winter.toDouble())
+        .put("toxic", toxic ?: JSONObject.NULL).put("how", how).put("cue", cue).put("pets", pets)
+    fun toMap(): Map<String, Any?> = mapOf("label" to label, "latin" to latin, "winter" to winter.toDouble(), "toxic" to toxic, "how" to how, "cue" to cue, "pets" to pets)
+
+    companion object {
+        fun fromJson(o: JSONObject?) = o?.let {
+            Care(it.optString("label"), it.optString("latin"), it.optDouble("winter", 1.0).toFloat(),
+                if (it.isNull("toxic")) null else it.optBoolean("toxic"), it.optString("how"), it.optString("cue"), it.optString("pets"))
+        }
+        fun fromMap(m: Map<*, *>?) = m?.let {
+            Care(it["label"] as? String ?: "", it["latin"] as? String ?: "", (it["winter"] as? Number)?.toFloat() ?: 1f,
+                it["toxic"] as? Boolean, it["how"] as? String ?: "", it["cue"] as? String ?: "", it["pets"] as? String ?: "")
+        }
+    }
+}
+
+fun Character.toJson(): JSONObject = JSONObject().put("title", title)
+    .put("thirsty", JSONArray(thirsty)).put("thanks", JSONArray(thanks)).put("damp", JSONArray(damp))
+fun Character.toMap(): Map<String, Any?> = mapOf("title" to title, "thirsty" to thirsty, "thanks" to thanks, "damp" to damp)
+private fun JSONArray?.strings(): List<String> = this?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } } ?: emptyList()
+fun characterFromJson(o: JSONObject?): Character? = o?.let {
+    val c = Character(it.optString("title"), it.optJSONArray("thirsty").strings(), it.optJSONArray("thanks").strings(), it.optJSONArray("damp").strings())
+    c.takeIf { x -> x.thirsty.isNotEmpty() && x.thanks.isNotEmpty() && x.damp.isNotEmpty() }
+}
+@Suppress("UNCHECKED_CAST")
+fun characterFromMap(m: Map<*, *>?): Character? = m?.let {
+    val c = Character(it["title"] as? String ?: "", (it["thirsty"] as? List<String>).orEmpty(), (it["thanks"] as? List<String>).orEmpty(), (it["damp"] as? List<String>).orEmpty())
+    c.takeIf { x -> x.thirsty.isNotEmpty() && x.thanks.isNotEmpty() && x.damp.isNotEmpty() }
+}
+
+/** The plant's kind: its own identified care when it has one, otherwise Sete's catalogue. */
+val Plant.k: Kind get() = care?.let { Kind(kind, it.label, it.latin, base, it.winter, it.toxic, it.how, it.cue, it.pets) } ?: Kinds[kind]
+
 enum class Pot(val label: String, val factor: Double) {
     PLASTIC("Plastic", 1.0), GLAZED("Glazed", 1.0), TERRACOTTA("Terracotta", 0.85), CONCRETE("Concrete", 0.92), METAL("Metal cover", 1.05)
 }
@@ -141,6 +176,10 @@ data class Plant(
     val pot: Pot? = null,
     val photoAt: Long? = null,
     val reads: List<Read> = emptyList(),
+    /** From identification: care written for this plant, its own voice, and a note of how it was identified. */
+    val care: Care? = null,
+    val voice: Character? = null,
+    val identified: String = "",
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("id", id); put("name", name); put("kind", kind); put("spot", spot); put("photo", photo)
@@ -150,6 +189,7 @@ data class Plant(
         put("light", light?.name ?: JSONObject.NULL); put("lux", lux ?: JSONObject.NULL); put("luxAt", luxAt ?: JSONObject.NULL)
         put("lightFrom", lightFrom); put("heat", heat); put("pot", pot?.name ?: JSONObject.NULL); put("photoAt", photoAt ?: JSONObject.NULL)
         put("reads", JSONArray().apply { reads.forEach { put(JSONObject().put("t", it.t).put("green", it.green)) } })
+        put("care", care?.toJson() ?: JSONObject.NULL); put("voice", voice?.toJson() ?: JSONObject.NULL); put("identified", identified)
     }
 
     fun toMap(): Map<String, Any?> = mapOf(
@@ -158,6 +198,7 @@ data class Plant(
         "log" to log.map { mapOf("t" to it.t, "by" to it.by, "k" to it.k) },
         "light" to light?.name, "lux" to lux, "luxAt" to luxAt, "lightFrom" to lightFrom, "heat" to heat, "pot" to pot?.name,
         "photoAt" to photoAt, "reads" to reads.map { mapOf("t" to it.t, "green" to it.green) },
+        "care" to care?.toMap(), "voice" to voice?.toMap(), "identified" to identified,
     )
 
     companion object {
@@ -174,6 +215,7 @@ data class Plant(
             pot = if (o.isNull("pot")) null else runCatching { Pot.valueOf(o.getString("pot")) }.getOrNull(),
             photoAt = if (o.isNull("photoAt")) null else o.optLong("photoAt"),
             reads = o.optJSONArray("reads")?.let { a -> (0 until a.length()).map { i -> a.getJSONObject(i).let { Read(it.getLong("t"), it.getDouble("green")) } } } ?: emptyList(),
+            care = Care.fromJson(o.optJSONObject("care")), voice = characterFromJson(o.optJSONObject("voice")), identified = o.optString("identified"),
         )
 
         private fun num(v: Any?): Number? = v as? Number
@@ -191,6 +233,7 @@ data class Plant(
             heat = m["heat"] as? Boolean ?: false, pot = (m["pot"] as? String)?.let { v -> runCatching { Pot.valueOf(v) }.getOrNull() },
             photoAt = num(m["photoAt"])?.toLong(),
             reads = (m["reads"] as? List<Map<String, Any?>>)?.map { Read(num(it["t"])?.toLong() ?: 0L, num(it["green"])?.toDouble() ?: 0.0) } ?: emptyList(),
+            care = Care.fromMap(m["care"] as? Map<*, *>), voice = characterFromMap(m["voice"] as? Map<*, *>), identified = m["identified"] as? String ?: "",
         )
     }
 }
@@ -203,6 +246,8 @@ data class Standing(val thirst: Thirst, val days: Double, val remaining: Double?
 object Rhythm {
     /** UK light and heating: plants drink less as the days shorten. */
     fun season(month: Int): Double = doubleArrayOf(1.5, 1.5, 1.25, 1.1, 1.0, 1.0, 1.0, 1.0, 1.1, 1.25, 1.5, 1.5)[month]
+
+    fun winterExtra(p: Plant, month: Int): Double = if (month >= 10 || month <= 1) p.k.winter.toDouble() else 1.0
 
     fun winterExtra(kind: String, month: Int): Double = if (month >= 10 || month <= 1) Kinds[kind].winter.toDouble() else 1.0
 
@@ -223,7 +268,7 @@ object Rhythm {
     fun days(p: Plant, now: Long = System.currentTimeMillis()): Double {
         val m = month(now)
         val spot = spotParts(p, m).fold(1.0) { a, b -> a * b.second }
-        return (p.base * season(m) * winterExtra(p.kind, m) * spot * p.learn).coerceAtLeast(1.5)
+        return (p.base * season(m) * winterExtra(p, m) * spot * p.learn).coerceAtLeast(1.5)
     }
 
     fun standing(p: Plant, now: Long = System.currentTimeMillis()): Standing {

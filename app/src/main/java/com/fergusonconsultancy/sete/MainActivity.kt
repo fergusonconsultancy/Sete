@@ -303,7 +303,7 @@ class MainActivity : Activity() {
         }
         // Search looks at the name, the type, its Latin name and where it lives
         val q = query.lowercase()
-        fun matches(p: Plant) = q.isEmpty() || listOf(p.name, Kinds[p.kind].label, Kinds[p.kind].latin, p.spot).any { it.lowercase().contains(q) }
+        fun matches(p: Plant) = q.isEmpty() || listOf(p.name, p.k.label, p.k.latin, p.spot).any { it.lowercase().contains(q) }
         fun ordered(t: Thirst, l: List<Plant>) = when (Store.sort) {
             "name" -> l.sortedBy { it.name.lowercase() }
             "place" -> l.sortedWith(compareBy({ it.spot.lowercase().ifBlank { "~" } }, { it.name.lowercase() }))
@@ -597,7 +597,7 @@ class MainActivity : Activity() {
 
     private fun fillPlant(b: LinearLayout, id: String) {
         val p = Store.get(id) ?: return
-        val k = Kinds[p.kind]
+        val k = p.k
         val s = Rhythm.standing(p)
 
         val hero = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM }
@@ -606,7 +606,7 @@ class MainActivity : Activity() {
         val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16), 0, 0, 0) }
         words.addView(text(p.name, if (p.name.length > 14) 25f else 30f, Kit.INK, displayFace = true).apply { setLineSpacing(0f, 1.05f) })
         if (k.latin.isNotBlank()) words.addView(text(k.latin, 13.5f, Kit.MUTED).apply { setTypeface(typeface, android.graphics.Typeface.ITALIC) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4) })
-        words.addView(text(Personality[p.kind].title.uppercase(), 11f, Kit.CHAMPAGNE, 500).apply { letterSpacing = 0.18f },
+        words.addView(text(Personality.of(p).title.uppercase(), 11f, Kit.CHAMPAGNE, 500).apply { letterSpacing = 0.18f },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8) })
         val lastBy = p.log.firstOrNull { it.k != "damp" }?.by ?: ""
         val state = if (p.last != null) "${Rhythm.dueText(s)}. Watered ${Rhythm.ago(p.last)}${if (who(lastBy).isNotBlank()) " by ${who(lastBy)}" else ""}."
@@ -627,7 +627,7 @@ class MainActivity : Activity() {
         val m = Rhythm.month(System.currentTimeMillis())
         // The rhythm in plain words: how often, what's usual, and what is stretching or shortening it
         val slower = mutableListOf<String>(); val faster = mutableListOf<String>()
-        if (Rhythm.season(m) * Rhythm.winterExtra(p.kind, m) > 1.0) slower += if (Rhythm.winterExtra(p.kind, m) > 1.0) "its winter rest" else "shorter days"
+        if (Rhythm.season(m) * Rhythm.winterExtra(p, m) > 1.0) slower += if (Rhythm.winterExtra(p, m) > 1.0) "its winter rest" else "shorter days"
         Rhythm.spotParts(p, m).forEach { (what, f) -> if (f > 1.0) slower.add(what) else faster.add(what) }
         if (p.learn > 1.0) slower += "damp soil at past checks" else if (p.learn < 1.0) faster += "dry soil at past checks"
         fun list(l: List<String>) = if (l.size < 2) l.joinToString("") else l.dropLast(1).joinToString(", ") + " and " + l.last()
@@ -671,6 +671,9 @@ class MainActivity : Activity() {
         shots.addView(quiet("New photo") { shotFor = id; camera(12) }, LinearLayout.LayoutParams(0, -2, 1f))
         shots.addView(quiet("From gallery") { shotFor = id; gallery(14) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(10) })
         b.addView(shots, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
+        if (p.identified.isNotBlank()) b.addView(text(p.identified, 13f, Kit.MUTED).apply { setLineSpacing(0f, 1.25f) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
+        if (Vision.enabled && p.photo.isNotBlank()) b.addView(quiet("Identify this plant", "From its current photo") { identifyExisting(id) },
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
 
         b.block("How to water", k.how)
         b.block("Thirst signal", k.cue)
@@ -692,6 +695,54 @@ class MainActivity : Activity() {
         ends.addView(quiet("Edit plant") { openEdit(id) }, LinearLayout.LayoutParams(0, -2, 1f))
         ends.addView(quiet("Remove from the garden", color = Kit.THIRST) { closeSheet(); removePlant(id) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(10) })
         b.addView(ends, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26) })
+    }
+
+    /** Identifies a plant already in the garden from its photo, then asks before changing anything. */
+    private fun identifyExisting(id: String) {
+        val p = Store.get(id) ?: return
+        val img = if (p.photo.startsWith("data:")) p.photo.substringAfter(",") else
+            runCatching { assets.open("plants/${p.photo}.jpg").use { Base64.encodeToString(it.readBytes(), Base64.NO_WRAP) } }.getOrNull()
+        if (img.isNullOrBlank()) { toast("This plant has no photo to identify."); return }
+        toast("Identifying ${p.name}…")
+        Thread {
+            val r = runCatching { Vision.identify(img) }
+            main.post {
+                r.onFailure { e -> toast(e.message ?: "Couldn't identify it.") }.onSuccess { res -> confirmIdentity(id, res) }
+            }
+        }.start()
+    }
+
+    private fun confirmIdentity(id: String, res: Vision.Result) {
+        val p = Store.get(id) ?: return
+        sheetRefresh = null; onSheetClosed = null
+        Sound.play(Sound.Cue.PLIP)
+        openSheet { b ->
+            b.addView(text("Looks like ${res.name.lowercase()}", 28f, Kit.INK, displayFace = true))
+            if (res.latin.isNotBlank()) b.addView(text(res.latin, 14f, Kit.MUTED).apply { setTypeface(typeface, android.graphics.Typeface.ITALIC) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4) })
+            b.addView(text("${res.sureness.replaceFirstChar { it.uppercase() }}. ${res.condition}", 15f, Kit.INK).apply { setLineSpacing(0f, 1.3f) },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14) })
+            val known = res.kind != "other"
+            b.addView(text(if (known) "Using it sets ${p.name} up as ${Kinds[res.kind].label.lowercase()}, watered about every ${res.summerDays} days in summer."
+                else "Using it gives ${p.name} care written for ${res.name.lowercase()}, watered about every ${res.summerDays} days in summer.",
+                14f, Kit.MUTED).apply { setLineSpacing(0f, 1.25f) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
+            if (res.alternatives.isNotEmpty()) b.addView(text("Other possibilities: " + res.alternatives.joinToString(", ") { it.name } + ".", 13.5f, Kit.MUTED),
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8) })
+            b.addView(primary("Use this") {
+                val now = System.currentTimeMillis()
+                Store.get(id)?.let { cur ->
+                    Store.put(cur.copy(
+                        name = if (cur.name.isBlank() || cur.name == "Unnamed plant") res.name else cur.name,
+                        kind = res.kind, base = res.summerDays,
+                        care = if (known) null else res.care, voice = if (known) null else res.voice,
+                        seen = res.condition.ifBlank { cur.seen },
+                        identified = "Identified from its photo on ${shortDate(now)} as ${res.name}${if (res.latin.isNotBlank()) " (${res.latin})" else ""}, ${res.sureness}."))
+                }
+                toast("${p.name} is set up as ${res.name.lowercase()}.")
+                openPlant(id)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(22) })
+            b.addView(quiet("Not right, keep it as it is") { openPlant(id) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
+        }
     }
 
     // ---- Light meter ---------------------------------------------------------------------------
@@ -752,7 +803,7 @@ class MainActivity : Activity() {
     // ---- Add or edit -------------------------------------------------------------------------
 
     /** A photo read on the phone: the picture, its leaf colour and the light it was taken in. */
-    data class Shot(val photo: String, val green: Double?, val lux: Double?)
+    data class Shot(val photo: String, val green: Double?, val lux: Double?, val big: String? = null)
 
     private fun openEdit(id: String?, shot: Shot? = null) {
         sheetRefresh = null
@@ -788,6 +839,15 @@ class MainActivity : Activity() {
         b.addView(photoRow, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18) })
         val lightNote = text("", 13f, Kit.MUTED).apply { setLineSpacing(0f, 1.25f) }
         var lightChips: Chips? = null
+        var potChips: Chips? = null
+        // Identification: what Claude made of the photo, shown under it with other possibilities
+        val idNote = text("", 14.5f, Kit.INK).apply { setLineSpacing(0f, 1.3f); visibility = View.GONE }
+        val idAlts = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        b.addView(idNote, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(14) })
+        b.addView(idAlts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8) })
+        var found: Vision.Result? = null
+        var autoName = ""
+        var asking = 0
 
         b.addView(label("Name"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(18) })
         val name = field("Peace Lily", p?.name ?: "").apply { tag = "name" }
@@ -797,10 +857,11 @@ class MainActivity : Activity() {
         val readout = text("", 17f, Kit.INK, 500).apply { gravity = Gravity.CENTER; fontFeatureSettings = "tnum" }
         fun paintBase() { readout.text = "$base days" }
         val kinds = Kinds.all
-        b.addView(Chips(this, kinds.map { it.label }, kinds.indexOfFirst { it.key == kind }.coerceAtLeast(0)) { i ->
+        val kindChips = Chips(this, kinds.map { it.label }, kinds.indexOfFirst { it.key == kind }.coerceAtLeast(0)) { i ->
             kind = kinds[i].key
             if (!baseTouched) { base = kinds[i].base; paintBase() }
-        })
+        }
+        b.addView(kindChips)
 
         b.addView(label("Where it lives"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16) })
         val spot = field("Bay window", p?.spot ?: "")
@@ -816,7 +877,8 @@ class MainActivity : Activity() {
             b.addView(Row(this, "Next to a radiator", "Dries faster while the heating's on", Toggle(this, heat) { heat = it }).apply { setPadding(0, px(10), 0, px(2)) })
             b.addView(label("Pot"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6) })
             val pots = Pot.values()
-            b.addView(Chips(this, pots.map { it.label }, pot?.let { pots.indexOf(it) } ?: -1) { i -> pot = pots[i] })
+            potChips = Chips(this, pots.map { it.label }, pot?.let { pots.indexOf(it) } ?: -1) { i -> pot = pots[i] }
+            b.addView(potChips)
         }
 
         // A photo arriving fills in what it can: the light it was taken in, unless she has chosen
@@ -830,8 +892,62 @@ class MainActivity : Activity() {
                 lightNote.text = "Looks ${l.label.lowercase()} from the photo's exposure (about %,d lux). Measure it later for accuracy.".format((s.lux ?: 0.0).roundToInt())
             }
         }
-        photoPicked = { s -> useShot(s) }
-        pendingShot?.let { useShot(it) }
+        // Sends the photo to be identified, and fills in what comes back
+        fun identify(s: Shot, hint: String? = null) {
+            val img = s.big ?: s.photo.substringAfter(",", "")
+            if (!Vision.enabled || img.isBlank()) return
+            val ask = ++asking
+            idNote.visibility = View.VISIBLE; idAlts.visibility = View.GONE
+            idNote.setTextColor(Kit.MUTED)
+            idNote.text = if (hint == null) "Identifying the plant…" else "Looking up $hint…"
+            Thread {
+                val r = runCatching { Vision.identify(img, hint) }
+                main.post {
+                    // Only the latest request counts, and only while this sheet is still open
+                    if (ask != asking || sheet == null || b.parent == null) return@post
+                    r.onFailure { e ->
+                        idNote.setTextColor(Kit.MUTED)
+                        idNote.text = (e.message ?: "Couldn't identify it.") + " Pick its type below."
+                    }.onSuccess { res ->
+                        found = res
+                        Sound.play(Sound.Cue.PLIP)
+                        idNote.setTextColor(Kit.INK)
+                        val latin = if (res.latin.isNotBlank()) " (${res.latin})" else ""
+                        idNote.text = if (hint != null) "Set up as ${res.name}$latin." else
+                            "Looks like ${res.name.lowercase().let { if (it.first() in "aeiou") "an $it" else "a $it" }}$latin, ${res.sureness}." +
+                                if (res.condition.isNotBlank()) " ${res.condition}" else ""
+                        // Fill in what she hasn't already set herself
+                        val typed = name.text.toString().trim()
+                        if (typed.isEmpty() || typed == autoName) { name.setText(res.name); autoName = res.name }
+                        val ki = kinds.indexOfFirst { it.key == res.kind }
+                        if (ki >= 0) { kindChips.select(ki); kind = res.kind }
+                        if (!baseTouched) { base = res.summerDays; paintBase() }
+                        if (pot == null && res.pot != null) { pot = res.pot; potChips?.select(Pot.values().indexOf(res.pot)) }
+                        showPreview()
+                        // Not right? Other possibilities, or her own answer
+                        idAlts.removeAllViews()
+                        if (res.alternatives.isNotEmpty() && hint == null) {
+                            idAlts.addView(label("Not right? It might be"))
+                            idAlts.addView(Chips(this, res.alternatives.map { it.name }, -1) { i -> identify(s, res.alternatives[i].let { a -> if (a.latin.isNotBlank()) "${a.name} (${a.latin})" else a.name }) })
+                        }
+                        idAlts.visibility = if (idAlts.childCount > 0) View.VISIBLE else View.GONE
+                    }
+                }
+            }.start()
+        }
+
+        photoPicked = { s -> useShot(s); if (p == null) identify(s) }
+        pendingShot?.let { useShot(it); if (p == null) identify(it) }
+        if (p == null && Vision.enabled) {
+            // Her own answer, if the guess is wrong: care is then written for that plant
+            b.addView(quiet("I know what it is", "Type its name and Sete fills in its care") {
+                val s = pendingShot
+                val typed = name.text.toString().trim()
+                if (s == null) toast("Take a photo first.")
+                else if (typed.isEmpty() || typed == autoName) { name.requestFocus(); toast("Type its name above, then tap this again.") }
+                else identify(s, typed)
+            }, b.indexOfChild(idAlts) + 1, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8) })
+        }
 
         b.addView(label("Summer rhythm (stretched automatically for the season and spot)"), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(16) })
         val stepper = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -852,10 +968,15 @@ class MainActivity : Activity() {
             val now = System.currentTimeMillis()
             val shot = pendingShot
             if (p == null) {
+                val id = found
+                // Identified plants Sete doesn't list keep the care and voice written for them
+                val own = id != null && kind == "other"
                 Store.put(Plant(id = Store.newId(), name = n, kind = kind, spot = spot.text.toString().trim(), photo = shot?.photo ?: "", base = base, order = 999,
                     light = light, lightFrom = if (light == null) "" else lightFrom, lux = if (lightFrom == "photo") shot?.lux else null,
                     luxAt = if (lightFrom == "photo" && shot?.lux != null) now else null, heat = heat, pot = pot,
-                    photoAt = if (shot != null) now else null, reads = shot?.green?.let { listOf(Read(now, it)) } ?: emptyList()))
+                    photoAt = if (shot != null) now else null, reads = shot?.green?.let { listOf(Read(now, it)) } ?: emptyList(),
+                    care = if (own) id?.care else null, voice = if (own) id?.voice else null, seen = id?.condition ?: "",
+                    identified = id?.let { "Identified from its photo on ${shortDate(now)} as ${it.name}${if (it.latin.isNotBlank()) " (${it.latin})" else ""}, ${it.sureness}." } ?: ""))
                 toast("Added $n")
             } else {
                 var next = p.copy(name = n, kind = kind, spot = spot.text.toString().trim(), base = base)
@@ -948,7 +1069,13 @@ class MainActivity : Activity() {
         val lux = runCatching {
             (if (fromCamera) java.io.FileInputStream(captureFile()) else contentResolver.openInputStream(uri))?.use { Look.luxFromExif(it) }
         }.getOrNull()
-        return Shot("data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP), Look.green(out), lux)
+        // A sharper copy for identification only: never stored
+        val big = if (Vision.enabled) runCatching {
+            val f = minOf(1f, 900f / maxOf(src.width, src.height))
+            val scaled = Bitmap.createScaledBitmap(src, (src.width * f).toInt(), (src.height * f).toInt(), true)
+            Base64.encodeToString(ByteArrayOutputStream().also { scaled.compress(Bitmap.CompressFormat.JPEG, 82, it) }.toByteArray(), Base64.NO_WRAP)
+        }.getOrNull() else null
+        return Shot("data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP), Look.green(out), lux, big)
     }
 
     // ---- First run -----------------------------------------------------------------------------
@@ -1130,6 +1257,14 @@ class MainActivity : Activity() {
             if (!notificationsOn()) askNotifications() else { Reminders.round(this, "morning", test = true); toast("Sent. Check the notification shade.") }
         })
         b.addView(card)
+
+        section(b, "Recognition")
+        val rec = Card(this)
+        rec.row(Row(this, "Identify new plants",
+            if (Vision.enabled) "On. A new plant's photo is sent to Anthropic, and Claude names it, reads its condition and writes its care."
+            else "Off in this build. Add an Anthropic API key to switch it on: the steps are in the project's README.",
+            endValue(if (Vision.enabled) "On" else "Off", if (Vision.enabled) Kit.GOOD else Kit.MUTED)))
+        b.addView(rec)
 
         section(b, "Garden")
         val garden = Card(this)
