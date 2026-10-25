@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- One drop, half drunk: the water is the only material in Sete -->
+    <group>
+        <clip-path android:pathData="M54,27 C54,27 35,49 35,63 A19,19 0 0,0 73,63 C73,49 54,27 54,27 Z"/>
+        <path android:pathData="M54,27 C54,27 35,49 35,63 A19,19 0 0,0 73,63 C73,49 54,27 54,27 Z" android:fillColor="#FF18201C"/>
+        <!-- What is left of the last drink, deep where it pools -->
+        <path android:pathData="M30,62 Q34.5,59.5 39,62 T48,62 T57,62 T66,62 T75,62 L78,90 L30,90 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient android:type="linear" android:startX="54" android:startY="60" android:endX="54" android:endY="84">
+                    <item android:offset="0" android:color="#FF6FB8C9"/>
+                    <item android:offset="1" android:color="#FF1F5C6B"/>
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- The meniscus: the one curve that moves -->
+        <path android:pathData="M30,62 Q34.5,59.5 39,62 T48,62 T57,62 T66,62 T75,62" android:strokeColor="#FFF6F1E6" android:strokeWidth="1.2" android:fillColor="#00000000"/>
+    </group>
+    <!-- The vessel, outlined in champagne -->
+    <path android:pathData="M54,27 C54,27 35,49 35,63 A19,19 0 0,0 73,63 C73,49 54,27 54,27 Z"
+        android:strokeColor="#FFD9BB86" android:strokeWidth="1.6" android:fillColor="#00000000"/>
+    <!-- Light from the upper left, caught on the glass -->
+    <path android:pathData="M45.5,46 Q42,51.5 41,56" android:strokeColor="#99F6F1E6" android:strokeWidth="1.4" android:strokeLineCap="round" android:fillColor="#00000000"/>
+</vector>
