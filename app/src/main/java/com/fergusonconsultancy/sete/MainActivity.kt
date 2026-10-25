@@ -259,7 +259,14 @@ class MainActivity : Activity() {
 
         val n = { t: Thirst -> groups[t]?.size ?: 0 }
         val thirsty = n(Thirst.THIRSTY); val soon = n(Thirst.SOON); val fresh = n(Thirst.NEW)
-        screen.status.set(if (thirsty > 0) "$thirsty thirsty" else "All content", if (thirsty > 0) Kit.THIRST else Kit.GOOD)
+        // The header pill names the most urgent state, so it never contradicts the line beneath it
+        val (pill, pillColour) = when {
+            thirsty > 0 -> "$thirsty thirsty" to Kit.THIRST
+            soon > 0 -> "$soon due soon" to Kit.CHAMPAGNE
+            fresh > 0 -> "$fresh to check" to Kit.MUTED
+            else -> "All content" to Kit.GOOD
+        }
+        screen.status.set(pill, pillColour)
         val hello = greeting()
         verdict.text = hello + when {
             plants.isEmpty() -> "No plants yet. Add the first one."
@@ -510,15 +517,19 @@ class MainActivity : Activity() {
 
         if (s.thirst == Thirst.THIRSTY) b.block("${p.name} says", Personality.thirsty(p), Kit.CHAMPAGNE)
 
-        // The rhythm, with every force that shapes it named
         val m = Rhythm.month(System.currentTimeMillis())
-        val season = Rhythm.season(m) * Rhythm.winterExtra(p.kind, m)
-        val parts = mutableListOf("${p.base} days in summer")
-        fun x(f: Double) = "×" + "%.2f".format(f).trimEnd('0').trimEnd('.')
-        if (season != 1.0) parts += "${x(season)} for the season"
-        Rhythm.spotParts(p, m).forEach { (what, f) -> parts += "${x(f)} $what" }
-        if (p.learn != 1.0) parts += "${x(p.learn)} learned from the soil"
-        b.block("Rhythm", "Every ${s.days.roundToInt()} days right now: ${parts.joinToString(", ")}.")
+        // The rhythm in plain words: how often, what's usual, and what is stretching or shortening it
+        val slower = mutableListOf<String>(); val faster = mutableListOf<String>()
+        if (Rhythm.season(m) * Rhythm.winterExtra(p.kind, m) > 1.0) slower += if (Rhythm.winterExtra(p.kind, m) > 1.0) "its winter rest" else "shorter days"
+        Rhythm.spotParts(p, m).forEach { (what, f) -> if (f > 1.0) slower.add(what) else faster.add(what) }
+        if (p.learn > 1.0) slower += "damp soil at past checks" else if (p.learn < 1.0) faster += "dry soil at past checks"
+        fun list(l: List<String>) = if (l.size < 2) l.joinToString("") else l.dropLast(1).joinToString(", ") + " and " + l.last()
+        val why = listOfNotNull(
+            slower.takeIf { it.isNotEmpty() }?.let { "slower for ${list(it)}" },
+            faster.takeIf { it.isNotEmpty() }?.let { "faster for ${list(it)}" },
+        ).joinToString("; ")
+        b.block("Watering", "Every ${s.days.roundToInt()} days for now." +
+            if (why.isNotEmpty()) " Usually ${p.base} in summer; $why." else "")
 
         // Its spot: light, heat and pot each change how fast the soil dries
         heading(b, "Its spot", 26)

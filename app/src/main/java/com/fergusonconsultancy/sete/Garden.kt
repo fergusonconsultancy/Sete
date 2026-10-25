@@ -214,9 +214,9 @@ object Rhythm {
     /** What the spot does to the rhythm, each part named so the app can explain it. */
     fun spotParts(p: Plant, month: Int): List<Pair<String, Double>> {
         val out = mutableListOf<Pair<String, Double>>()
-        p.light?.let { if (it.factor != 1.0) out += "${it.label.lowercase()} light" to it.factor }
-        if (p.heat && heating(month)) out += "radiator on" to 0.85
-        p.pot?.let { if (it.factor != 1.0) out += "${it.label.lowercase()} pot" to it.factor }
+        p.light?.let { if (it.factor != 1.0) out += (if (it == Light.SUN) "direct sun" else "${it.label.lowercase()} light") to it.factor }
+        if (p.heat && heating(month)) out += "the radiator" to 0.85
+        p.pot?.let { if (it.factor != 1.0) out += (if (it == Pot.METAL) "its metal cover" else "its ${it.label.lowercase()} pot") to it.factor }
         return out
     }
 
