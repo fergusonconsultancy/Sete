@@ -56,6 +56,36 @@ object Store {
     var household: String
         get() = prefs.getString("household", "") ?: ""
         set(v) = prefs.edit().putString("household", v).apply()
+    var sound: Boolean
+        get() = prefs.getBoolean("sound", true)
+        set(v) = prefs.edit().putBoolean("sound", v).apply()
+    /** Rounds finished, one per day at most, since a plant was last left thirsty for two days. */
+    var streak: Int
+        get() = prefs.getInt("streak", 0)
+        set(v) = prefs.edit().putInt("streak", v).apply()
+    private var streakDay: Long
+        get() = prefs.getLong("streakDay", -1L)
+        set(v) = prefs.edit().putLong("streakDay", v).apply()
+
+    private fun today(): Long {
+        val c = java.util.Calendar.getInstance()
+        return (System.currentTimeMillis() + c.get(java.util.Calendar.ZONE_OFFSET) + c.get(java.util.Calendar.DST_OFFSET)) / DAY
+    }
+
+    /** Called whenever the garden is checked: a plant two days overdue ends the streak. */
+    fun checkNeglect() {
+        val now = System.currentTimeMillis()
+        if (all().any { (Rhythm.standing(it, now).remaining ?: 0.0) <= -2.0 }) streak = 0
+    }
+
+    /** Called when nothing is left thirsty after she acts. Returns true if the streak grew today. */
+    fun noteCleared(): Boolean {
+        val d = today()
+        if (streakDay == d) return false
+        streakDay = d; streak += 1
+        return true
+    }
+
     var onboarded: Boolean
         get() = prefs.getBoolean("onboarded", false)
         set(v) = prefs.edit().putBoolean("onboarded", v).apply()

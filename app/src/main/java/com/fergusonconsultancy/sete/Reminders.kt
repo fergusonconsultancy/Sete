@@ -122,6 +122,12 @@ object Reminders {
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
+    private fun roundIntent(c: Context) = PendingIntent.getActivity(
+        c, "round".hashCode(),
+        Intent(c, MainActivity::class.java).putExtra("round", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
     private fun names(list: List<Plant>): String = when (list.size) {
         1 -> list[0].name
         2 -> "${list[0].name} and ${list[1].name}"
@@ -131,6 +137,7 @@ object Reminders {
     /** The round itself. [test] shows the current state even when nothing is due. */
     fun round(c: Context, slot: String, test: Boolean = false) {
         channel(c)
+        Store.checkNeglect()
         if (!NotificationManagerCompat.from(c).areNotificationsEnabled()) return
         val now = System.currentTimeMillis()
         val all = Store.all().map { it to Rhythm.standing(it, now) }
@@ -156,11 +163,12 @@ object Reminders {
         shown.forEach { (p, s) ->
             val k = Kinds[p.kind]
             val line = Rhythm.dueText(s) + if (p.spot.isNotBlank()) " · ${p.spot}" else ""
+            val voice = Personality.thirsty(p)
             val extras = android.os.Bundle().apply { putString("plantId", p.id) }
             val b = NotificationCompat.Builder(c, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat_drop).setColor(Kit.WATER)
-                .setContentTitle(p.name).setContentText(line)
-                .setStyle(NotificationCompat.BigTextStyle().bigText("$line\n${k.cue}"))
+                .setContentTitle(p.name).setContentText(voice)
+                .setStyle(NotificationCompat.BigTextStyle().bigText("$voice\n$line\n${k.cue}"))
                 .setGroup(GROUP).setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_SUMMARY)
                 .setOnlyAlertOnce(true).setAutoCancel(true).addExtras(extras)
                 .setContentIntent(openIntent(c, p.id))
@@ -172,14 +180,14 @@ object Reminders {
         val list = thirsty.map { it.first }
         val title = if (list.size == 1) "${list[0].name} is thirsty" else "${list.size} plants are thirsty"
         val inbox = NotificationCompat.InboxStyle().setBigContentTitle(title)
-        thirsty.take(6).forEach { (p, s) -> inbox.addLine("${p.name}  ·  ${Rhythm.dueText(s)}") }
+        thirsty.take(6).forEach { (p, _) -> inbox.addLine("${p.name}: ${Personality.thirsty(p)}") }
         if (thirsty.size > 6) inbox.setSummaryText("and ${thirsty.size - 6} more")
         runCatching {
             nm.notify(SUMMARY_ID, NotificationCompat.Builder(c, CHANNEL)
                 .setSmallIcon(R.drawable.ic_stat_drop).setColor(Kit.WATER)
-                .setContentTitle(title).setContentText(names(list.take(4)))
+                .setContentTitle(title).setContentText(if (list.size == 1) Personality.thirsty(list[0]) else "${names(list.take(4))}. Tap to start the round.")
                 .setStyle(inbox).setGroup(GROUP).setGroupSummary(true)
-                .setContentIntent(openIntent(c, null)).setAutoCancel(true).build())
+                .setContentIntent(roundIntent(c)).setAutoCancel(true).build())
         }
     }
 }

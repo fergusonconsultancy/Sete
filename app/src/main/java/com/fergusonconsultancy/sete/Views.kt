@@ -235,7 +235,25 @@ class PlantCard(ctx: Context, val plantId: String, onOpen: (String) -> Unit, onW
         }
     }
 
+    var thirsty = false
+        private set
+
+    /** A thirsty plant wilts a little and recovers: once, as the garden opens. */
+    fun droop() {
+        if (!isAttachedToWindow || width == 0) return
+        pivotX = width / 2f; pivotY = height.toFloat()
+        ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 1100
+            addUpdateListener {
+                val t = it.animatedFraction
+                rotation = -3.2f * sin(t * PI.toFloat() * 2.2f) * (1f - t)
+            }
+            start()
+        }
+    }
+
     fun bind(p: Plant, s: Standing, animate: Boolean) {
+        thirsty = s.thirst == Thirst.THIRSTY
         tile.bind(p, s, animate)
         name.text = p.name
         sub.text = Rhythm.dueText(s)

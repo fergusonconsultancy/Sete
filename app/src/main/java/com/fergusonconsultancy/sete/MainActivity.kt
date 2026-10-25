@@ -42,6 +42,9 @@ class MainActivity : Activity() {
     private lateinit var screen: Screen
     private lateinit var verdict: TextView
     private lateinit var tallies: Flow
+    private lateinit var voice: TextView
+    private lateinit var roundButton: TextView
+    private var round: RoundView? = null
     private lateinit var fab: TextView
     private lateinit var remindersPill: Pill
     private val sections = LinkedHashMap<Thirst, Pair<LinearLayout, Grid>>()
@@ -67,6 +70,7 @@ class MainActivity : Activity() {
         super.onCreate(saved)
         if (Crash.show(this)) { crashed = true; return }
         Store.init(this)
+        Sound.init(this)
         Reminders.channel(this)
         Reminders.schedule(this)
 
@@ -74,6 +78,11 @@ class MainActivity : Activity() {
         screen = Screen(this, "Sete", dayLabel())
         verdict = text("", 19f, Kit.INK, 300).apply { setLineSpacing(0f, 1.3f) }
         screen.add(verdict, px(14))
+        // The thirstiest plant speaks for the garden
+        voice = text("", 15.5f, Kit.CHAMPAGNE, 400).apply { setLineSpacing(0f, 1.3f) }
+        screen.add(voice, px(10))
+        roundButton = pour("") { startRound() }
+        screen.add(roundButton, px(18))
         tallies = Flow(this)
         screen.add(tallies, px(18))
 
@@ -146,7 +155,10 @@ class MainActivity : Activity() {
         if (crashed) return
         Store.listen(onChange)
         Sync.start(this)
+        Store.checkNeglect()
         render()
+        // Thirsty plants wilt a little as you arrive
+        main.postDelayed({ cards.values.filter { it.thirsty }.forEachIndexed { i, c -> c.postDelayed({ c.droop() }, i * 90L) } }, 600)
     }
 
     override fun onStop() {
@@ -163,6 +175,11 @@ class MainActivity : Activity() {
     }
 
     private fun handle(i: Intent?) {
+        if (i?.getBooleanExtra("round", false) == true) {
+            i.removeExtra("round")
+            main.postDelayed({ startRound() }, 250)
+            return
+        }
         val id = i?.getStringExtra("plant") ?: return
         i.removeExtra("plant")
         main.postDelayed({ if (Store.get(id) != null) openPlant(id) }, 200)
@@ -170,7 +187,11 @@ class MainActivity : Activity() {
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (sheet != null) closeSheet() else super.onBackPressed()
+        when {
+            round != null -> round?.close()
+            sheet != null -> closeSheet()
+            else -> super.onBackPressed()
+        }
     }
 
     private fun dayLabel(): String {
@@ -220,18 +241,26 @@ class MainActivity : Activity() {
         val n = { t: Thirst -> groups[t]?.size ?: 0 }
         val thirsty = n(Thirst.THIRSTY); val soon = n(Thirst.SOON); val fresh = n(Thirst.NEW)
         screen.status.set(if (thirsty > 0) "$thirsty thirsty" else "All content", if (thirsty > 0) Kit.THIRST else Kit.GOOD)
-        verdict.text = when {
+        val hello = greeting()
+        verdict.text = hello + when {
             plants.isEmpty() -> "No plants yet. Add the first one."
             thirsty > 0 -> "${if (thirsty == 1) "One plant is" else "$thirsty plants are"} thirsty. " +
                 (if (soon > 0) "$soon more in the next couple of days." else "Everything else is fine.")
-            fresh > 0 -> "$fresh plants waiting for their first check. Feel each pot's soil as you go."
+            fresh > 0 -> "$fresh plants are waiting for their first check."
             soon > 0 -> "Nothing due today. $soon coming up soon."
             else -> "Everyone has had a drink. Nothing to do today."
         }
+        val loudest = (groups[Thirst.THIRSTY] ?: emptyList()).minByOrNull { standing.getValue(it.id).remaining ?: 0.0 }
+        voice.text = loudest?.let { "${it.name}: ${Personality.thirsty(it)}" } ?: ""
+        voice.visibility = if (loudest == null) View.GONE else View.VISIBLE
+        val due = thirsty + fresh
+        roundButton.text = when { thirsty > 0 -> "Start the watering round  ·  $due"; fresh > 0 -> "Start the first round  ·  $fresh"; else -> "" }
+        roundButton.visibility = if (due > 0) View.VISIBLE else View.GONE
         tallies.removeAllViews()
         listOf(Thirst.THIRSTY to "Thirsty", Thirst.SOON to "Soon", Thirst.CONTENT to "Content", Thirst.NEW to "Not logged").forEach { (t, w) ->
             if (t != Thirst.NEW || n(t) > 0) tallies.addView(tally(n(t), w, THIRST_COLOR.getValue(t)))
         }
+        if (Store.streak > 0) tallies.addView(tally(Store.streak, if (Store.streak == 1) "round, nobody thirsty" else "rounds in a row", Kit.WATER))
         paintRemindersPill()
     }
 
@@ -246,15 +275,48 @@ class MainActivity : Activity() {
         else remindersPill.set("Reminders off", Kit.THIRST)
     }
 
+    private fun greeting(): String {
+        val h = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        val part = when { h < 5 -> "Up late"; h < 12 -> "Morning"; h < 18 -> "Afternoon"; else -> "Evening" }
+        val first = Store.me.trim().split(" ").firstOrNull().orEmpty()
+        return if (first.isNotBlank()) "$part, $first. " else ""
+    }
+
+    private fun thirstyCount() = System.currentTimeMillis().let { now -> Store.all().count { Rhythm.standing(it, now).thirst == Thirst.THIRSTY } }
+
     private fun act(id: String, a: Store.Act) {
-        val name = Store.get(id)?.name ?: return
+        val plant = Store.get(id) ?: return
+        val before = thirstyCount()
         holdUntil = System.currentTimeMillis() + 1500
         val prev = Store.act(id, a) ?: return
-        toast(when (a) {
-            Store.Act.WATERED -> "Watered $name"
-            Store.Act.DRY -> "Watered $name. It'll come round a little sooner."
-            Store.Act.DAMP -> "$name can wait. Check again in 2 days."
-        }) { Store.put(prev) }
+        if (a == Store.Act.DAMP) Sound.play(Sound.Cue.TAP) else Sound.watered()
+        val line = if (a == Store.Act.DAMP) Personality.damp(plant) else Personality.thanks(plant)
+        toast("${plant.name}: $line") { Store.put(prev) }
+        // The last thirsty plant done: that's a round
+        if (before > 0 && thirstyCount() == 0 && Store.noteCleared()) {
+            main.postDelayed({
+                Sound.play(Sound.Cue.CHIME, vary = false)
+                toast(if (Store.streak == 1) "Nobody's thirsty. First round done." else "Nobody's thirsty. ${Store.streak} rounds in a row.")
+            }, 1700)
+        }
+    }
+
+    private fun startRound() {
+        if (round != null) return
+        if (sheet != null) closeSheet()
+        val now = System.currentTimeMillis()
+        val all = Store.all().map { it to Rhythm.standing(it, now) }
+        val queue = all.filter { it.second.thirst == Thirst.THIRSTY }.sortedBy { it.second.remaining ?: 0.0 }.map { it.first.id } +
+            all.filter { it.second.thirst == Thirst.NEW }.sortedBy { it.first.order }.map { it.first.id }
+        val v = RoundView(this, queue, barsTop, barsBottom) {
+            round?.let { root.removeView(it) }
+            round = null
+            render()
+        }
+        round = v
+        root.addView(v, FrameLayout.LayoutParams(-1, -1))
+        v.alpha = 0f; v.translationY = px(30).toFloat()
+        v.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(Kit.ease).start()
     }
 
     // ---- Toast -------------------------------------------------------------------------------
@@ -365,6 +427,8 @@ class MainActivity : Activity() {
         val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16), 0, 0, 0) }
         words.addView(text(p.name, 30f, Kit.INK, displayFace = true))
         if (k.latin.isNotBlank()) words.addView(text(k.latin, 13.5f, Kit.MUTED).apply { setTypeface(typeface, android.graphics.Typeface.ITALIC) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4) })
+        words.addView(text(Personality[p.kind].title.uppercase(), 11f, Kit.CHAMPAGNE, 500).apply { letterSpacing = 0.18f },
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8) })
         val lastBy = p.log.firstOrNull { it.k != "damp" }?.by ?: ""
         val state = if (p.last != null) "${Rhythm.dueText(s)}. Watered ${Rhythm.ago(p.last)}${if (who(lastBy).isNotBlank()) " by ${who(lastBy)}" else ""}."
             else "Not logged yet. Feel the soil first."
@@ -379,6 +443,7 @@ class MainActivity : Activity() {
         two.addView(quiet("It was bone dry", "Watered, sooner next time") { closeSheet(); act(id, Store.Act.DRY) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(10) })
         b.addView(two, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
 
+        if (s.thirst == Thirst.THIRSTY) b.block("${p.name} says", Personality.thirsty(p), Kit.CHAMPAGNE)
         b.block("How to water", k.how)
         b.block("Thirst signal", k.cue)
         if (p.seen.isNotBlank()) b.block("Seen in its photo", p.seen)
@@ -628,6 +693,10 @@ class MainActivity : Activity() {
                 runCatching { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) }
             }
         })
+        card.row(Row(this, "Sounds", "Water and chimes. Quiet when the phone is on silent", Toggle(this, Store.sound) {
+            Store.sound = it
+            if (it) Sound.watered()
+        }))
         card.row(Row(this, "Send a test reminder", "Shows today's round now", endValue("Send", Kit.CHAMPAGNE)) {
             if (!notificationsOn()) askNotifications() else { Reminders.round(this, "morning", test = true); toast("Sent. Check the notification shade.") }
         })
