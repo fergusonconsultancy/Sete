@@ -70,9 +70,6 @@ class MainActivity : Activity() {
         Reminders.channel(this)
         Reminders.schedule(this)
 
-        window.setDecorFitsSystemWindows(false)
-        window.insetsController?.setSystemBarsAppearance(0,
-            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
 
         screen = Screen(this, "Sete", dayLabel())
         verdict = text("", 19f, Kit.INK, 300).apply { setLineSpacing(0f, 1.3f) }
@@ -134,6 +131,10 @@ class MainActivity : Activity() {
             ins
         }
         setContentView(root)
+        // The window's decor exists only once content is set
+        window.setDecorFitsSystemWindows(false)
+        window.insetsController?.setSystemBarsAppearance(0,
+            WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
 
         render()
         if (!Store.onboarded) main.postDelayed({ if (!Store.onboarded) openWelcome() }, 350)
