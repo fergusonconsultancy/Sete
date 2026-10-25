@@ -91,6 +91,7 @@ adb shell input keyevent KEYCODE_BACK; sleep 1
 
 # Search, the list layout, holding a plant to remove it (and Undo), and the settings
 plants() { adb shell run-as $PKG cat files/garden.json | python3 -c "import sys,json;print(len(json.load(sys.stdin)['plants']))"; }
+adb shell am start -S -W -n $PKG/.MainActivity; sleep 5
 tap_text "Search plants"; sleep 1
 adb shell input text orchid; sleep 2
 adb shell input keyevent KEYCODE_BACK; sleep 1
