@@ -2,6 +2,7 @@
 # Opens Sete, walks through the welcome, the garden and a watering round, then reports any crash.
 set +e
 PKG=com.fergusonconsultancy.sete
+SIZE=$(adb shell wm size | grep -o "[0-9]*x[0-9]*" | tail -1); W=${SIZE%x*}; H=${SIZE#*x}
 APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
 adb install -r "$APK"
 adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS
@@ -50,7 +51,7 @@ sleep 8
 shot 01-welcome-day
 tap_text "Not now"
 sleep 2
-adb shell input swipe 500 1500 500 400 300
+adb shell input swipe $((W/2)) $((H*7/10)) $((W/2)) $((H*3/10)) 300
 sleep 2
 shot 02-garden-day
 adb shell am start -W -n $PKG/.MainActivity --ez round true
@@ -71,8 +72,8 @@ shot 05-plant-day
 for i in 1 2 3 4; do
   adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
   grep -q 'Measure the light here' ui.xml && python3 -c "
-import re;x=open('ui.xml').read();m=re.search(r'text=\"Measure the light here\"[^>]*?bounds=\"\\[\\d+,(\\d+)\\]',x);import sys;sys.exit(0 if m and int(m.group(1))<1900 else 1)" && break
-  adb shell input swipe 540 1900 540 900 700; sleep 1
+import re;x=open('ui.xml').read();m=re.search(r'text=\"Measure the light here\"[^>]*?bounds=\"\\[\\d+,(\\d+)\\]',x);import sys;sys.exit(0 if m and int(m.group(1))<$((H*8/10)) else 1)" && break
+  adb shell input swipe $((W/2)) $((H*7/10)) $((W/2)) $((H*3/10)) 700; sleep 1
 done
 shot 06-plant-spot
 tap_text "Measure the light here"; sleep 4
