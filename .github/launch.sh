@@ -16,9 +16,9 @@ import re,sys
 x=open('ui.xml',encoding='utf-8').read()
 hit=None
 # The last match is the one drawn on top (the round covers the garden)
-for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',x):
-    if m.group(1)==sys.argv[1]:
-        a,b,c,d=map(int,m.groups()[1:]);hit=((a+c)//2,(b+d)//2)
+for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?content-desc="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',x):
+    if sys.argv[1] in (m.group(1), m.group(2)):
+        a,b,c,d=map(int,m.groups()[2:]);hit=((a+c)//2,(b+d)//2)
 if hit: print(*hit)
 PY
 )
@@ -64,7 +64,7 @@ tap_text "Close"; sleep 2
 # The tally chips take you to their group; a plant's page shows its spot; the light meter saves
 tap_text "Not logged"; sleep 2
 shot 04-chip-scrolled
-tap_any "Peace Lily" "Pilea" "Aloe" "Monstera" "Dieffenbachia" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Big Spider Plant" "Cane Orchid"
+tap_any "Bird of Paradise" "Citrus Tree" "Christmas Cactus" "Little Spider Plant" "Bromeliad" "Orchid in Bloom" "Pilea" "Kalanchoe, Terracotta" "Peace Lily" "Cane Orchid" "Orchid with the Sloth" "Kalanchoe Cuttings" "Dieffenbachia" "Monstera" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Aloe" "Big Spider Plant"
 sleep 2
 shot 05-plant-day
 adb shell input swipe 500 1800 500 700 400; sleep 1
@@ -74,7 +74,7 @@ shot 07-meter
 tap_text "Save this reading"; sleep 2
 adb shell input keyevent KEYCODE_BACK; sleep 1
 # Adding starts with the camera; closing the camera still opens the form
-tap_text "+  Plant"; sleep 5
+tap_text "Add a plant with a photo"; sleep 5
 shot 08-camera
 adb shell input keyevent KEYCODE_BACK; sleep 3
 shot 09-add-after-camera
@@ -99,7 +99,7 @@ sleep 2
 adb shell cmd uimode night yes; sleep 4
 adb shell am start -W -n $PKG/.MainActivity; sleep 4
 shot 10-garden-night
-tap_any "Peace Lily" "Pilea" "Aloe" "Monstera" "Dieffenbachia" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Big Spider Plant" "Cane Orchid" "Bird of Paradise" "Citrus Tree"
+tap_any "Bird of Paradise" "Citrus Tree" "Christmas Cactus" "Little Spider Plant" "Bromeliad" "Orchid in Bloom" "Pilea" "Kalanchoe, Terracotta" "Peace Lily" "Cane Orchid" "Orchid with the Sloth" "Kalanchoe Cuttings" "Dieffenbachia" "Monstera" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Aloe" "Big Spider Plant"
 sleep 2
 shot 11-plant-night
 adb shell input keyevent KEYCODE_BACK; sleep 1

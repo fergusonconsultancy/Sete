@@ -285,9 +285,10 @@ class DropIcon(ctx: Context) : android.graphics.drawable.Drawable() {
 }
 
 /** Children in equal columns with a gap; column count follows the width. */
-class Grid(ctx: Context) : ViewGroup(ctx) {
-    private val gap = ctx.px(12)
-    private fun cols(w: Int) = max(2, (w + gap) / (context.px(168) + gap))
+class Grid(ctx: Context, minColumnDp: Int = 168, gapDp: Int = 12) : ViewGroup(ctx) {
+    private val gap = ctx.px(gapDp)
+    private val minCol = ctx.px(minColumnDp)
+    private fun cols(w: Int) = max(2, (w + gap) / (minCol + gap))
 
     override fun onMeasure(wSpec: Int, hSpec: Int) {
         val w = MeasureSpec.getSize(wSpec)

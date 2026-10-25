@@ -41,7 +41,7 @@ class MainActivity : Activity() {
     private lateinit var root: FrameLayout
     private lateinit var screen: Screen
     private lateinit var verdict: TextView
-    private lateinit var tallies: Flow
+    private lateinit var tallies: Grid
     private lateinit var voice: TextView
     private lateinit var roundButton: TextView
     private var round: RoundView? = null
@@ -88,7 +88,8 @@ class MainActivity : Activity() {
         screen.add(voice, px(10))
         roundButton = pour("") { startRound() }
         screen.add(roundButton, px(18))
-        tallies = Flow(this)
+        // Equal tiles, two to a row on a phone, so every chip has room for its line of detail
+        tallies = Grid(this, minColumnDp = 150, gapDp = 8)
         screen.add(tallies, px(18))
 
         val titles = mapOf(
@@ -127,6 +128,7 @@ class MainActivity : Activity() {
             // A new plant starts with its photo: tap for the camera, hold to add without one
             setOnClickListener { performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); camera(11) }
             setOnLongClickListener { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); openEdit(null); true }
+            contentDescription = "Add a plant with a photo"
         }
         root.addView(fab, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END))
 
