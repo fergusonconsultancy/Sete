@@ -46,6 +46,8 @@ PY
 }
 mkdir -p shots
 shot() { adb exec-out screencap -p > "shots/$1.png"; }
+# Back to the top of the garden, where the tally chips are
+top() { for i in 1 2 3; do adb shell input swipe $((W/2)) $((H*35/100)) $((W/2)) $((H*85/100)) 200; done; sleep 1; }
 
 adb shell cmd uimode night no
 adb shell am start -W -n $PKG/.MainActivity
@@ -65,7 +67,7 @@ tap_text "Bone dry"; sleep 3
 tap_text "Skip"; sleep 2
 tap_text "Close"; sleep 2
 # The tally chips take you to their group; a plant's page shows its spot; the light meter saves
-tap_text "Not logged"; sleep 2
+top; tap_text "Not logged"; sleep 2
 shot 04-chip-scrolled
 tap_any "Bird of Paradise" "Citrus Tree" "Christmas Cactus" "Little Spider Plant" "Bromeliad" "Orchid in Bloom" "Pilea" "Kalanchoe, Terracotta" "Peace Lily" "Cane Orchid" "Orchid with the Sloth" "Kalanchoe Cuttings" "Dieffenbachia" "Monstera" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Aloe" "Big Spider Plant"
 sleep 2
@@ -103,6 +105,7 @@ adb shell input keyevent KEYCODE_ENTER; sleep 2
 tap_text "List"; sleep 2
 shot 13-list
 n0=$(plants)
+top; adb shell input swipe $((W/2)) $((H*7/10)) $((W/2)) $((H*4/10)) 300; sleep 1
 LONG=1 tap_any "Bird of Paradise" "Citrus Tree" "Christmas Cactus" "Little Spider Plant" "Bromeliad" "Orchid in Bloom" "Pilea" "Kalanchoe, Terracotta" "Peace Lily" "Cane Orchid" "Orchid with the Sloth" "Kalanchoe Cuttings" "Dieffenbachia" "Monstera" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Aloe" "Big Spider Plant"
 sleep 2
 shot 14-menu
