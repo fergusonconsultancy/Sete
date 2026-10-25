@@ -40,7 +40,9 @@ for m in re.finditer(r'<node [^>]*?text="([^"]*)"[^>]*?bounds="\[(\d+),(\d+)\]\[
         print((a+c)//2,(b+d)//2);break
 PY
 )
-  if [ -n "$b" ]; then adb shell input tap $b; echo "tapped card at $b"; else echo "::warning::no card on screen"; fi
+  if [ -n "$b" ]; then
+    if [ -n "$LONG" ]; then set -- $b; adb shell input swipe $1 $2 $1 $2 900; echo "held card at $b"; else adb shell input tap $b; echo "tapped card at $b"; fi
+  else echo "::warning::no card on screen"; fi
 }
 mkdir -p shots
 shot() { adb exec-out screencap -p > "shots/$1.png"; }
@@ -86,6 +88,32 @@ shot 08-camera
 adb shell input keyevent KEYCODE_BACK; sleep 3
 shot 09-add-after-camera
 adb shell input keyevent KEYCODE_BACK; sleep 1
+
+# Search, the list layout, holding a plant to remove it (and Undo), and the settings
+plants() { adb shell run-as $PKG cat files/garden.json | python3 -c "import sys,json;print(len(json.load(sys.stdin)['plants']))"; }
+tap_text "Search plants"; sleep 1
+adb shell input text orchid; sleep 2
+adb shell input keyevent KEYCODE_BACK; sleep 1
+shot 12-search
+for i in 1 2 3 4 5 6; do adb shell input keyevent KEYCODE_DEL; done; sleep 1
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "List"; sleep 2
+shot 13-list
+n0=$(plants)
+LONG=1 tap_any "Bird of Paradise" "Citrus Tree" "Christmas Cactus" "Little Spider Plant" "Bromeliad" "Orchid in Bloom" "Pilea" "Kalanchoe, Terracotta" "Peace Lily" "Cane Orchid" "Orchid with the Sloth" "Kalanchoe Cuttings" "Dieffenbachia" "Monstera" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Aloe" "Big Spider Plant"
+sleep 2
+shot 14-menu
+tap_text "Remove"; sleep 2
+n1=$(plants)
+tap_text "Undo"; sleep 2
+n2=$(plants)
+if [ "$n1" -eq $((n0-1)) ] && [ "$n2" -eq "$n0" ]; then echo "::notice::removed one plant and Undo brought it back ($n0 → $n1 → $n2)"; else echo "::error::remove or undo failed ($n0 → $n1 → $n2)"; fi
+tap_text "Settings"; sleep 2
+shot 15-settings
+adb shell input swipe $((W/2)) $((H*7/10)) $((W/2)) $((H*3/10)) 500; sleep 1
+shot 16-settings-garden
+adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "Cards"; sleep 1
 
 # Landscape: the round must still show every button
 count() { adb shell run-as $PKG cat files/garden.json | python3 -c "import sys,json;print(sum(len(x['log']) for x in json.load(sys.stdin)['plants']))"; }

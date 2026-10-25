@@ -117,6 +117,23 @@ object Store {
         return true
     }
 
+    /** How the garden is laid out: "cards" or "list". */
+    var view: String
+        get() = prefs.getString("view", "cards") ?: "cards"
+        set(v) = prefs.edit().putString("view", v).apply()
+    /** Order within each group: "due", "name" or "place". */
+    var sort: String
+        get() = prefs.getString("sort", "due") ?: "due"
+        set(v) = prefs.edit().putString("sort", v).apply()
+    /** "phone" follows the phone's light or dark setting; "day" or "night" fixes it. */
+    var theme: String
+        get() = prefs.getString("theme", "phone") ?: "phone"
+        set(v) = prefs.edit().putString("theme", v).apply()
+    /** Groups folded away. Content starts folded: those plants need nothing today. */
+    var folded: Set<String>
+        get() = prefs.getStringSet("folded", setOf(Thirst.CONTENT.name)) ?: emptySet()
+        set(v) = prefs.edit().putStringSet("folded", v.toSet()).apply()
+
     var onboarded: Boolean
         get() = prefs.getBoolean("onboarded", false)
         set(v) = prefs.edit().putBoolean("onboarded", v).apply()
@@ -153,11 +170,29 @@ object Store {
         Reminders.refresh(app)
     }
 
+    /** Removes a plant, keeping it among the recently removed so it can come back. */
     fun remove(id: String) {
+        val gone = get(id) ?: return
+        val kept = (listOf(gone) + removed().filter { it.id != id }).take(10)
+        prefs.edit().putString("removed", JSONArray().apply { kept.forEach { put(it.toJson()) } }.toString()).apply()
         synchronized(this) { plants.remove(id); save() }
         changed()
         Sync.delete(app, id)
         Reminders.cancelPlant(app, id)
+    }
+
+    /** The last ten plants removed, newest first. */
+    fun removed(): List<Plant> = runCatching {
+        val a = JSONArray(prefs.getString("removed", "[]"))
+        (0 until a.length()).map { Plant.fromJson(a.getJSONObject(it)) }
+    }.getOrDefault(emptyList())
+
+    /** Brings a removed plant back into the garden, as it was. */
+    fun restore(id: String): Plant? {
+        val p = removed().firstOrNull { it.id == id } ?: return null
+        prefs.edit().putString("removed", JSONArray().apply { removed().filter { it.id != id }.forEach { put(it.toJson()) } }.toString()).apply()
+        put(p)
+        return p
     }
 
     /** The household's copy replaces this phone's, whole. */

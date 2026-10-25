@@ -200,7 +200,7 @@ class Tile(ctx: Context, private val radius: Float, private val badge: Boolean =
 
 /** One plant on the garden screen. Its Watered button is there only when the plant needs it. */
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
-class PlantCard(ctx: Context, val plantId: String, onOpen: (String) -> Unit, onWater: (String) -> Unit) : LinearLayout(ctx) {
+class PlantCard(ctx: Context, val plantId: String, onOpen: (String) -> Unit, onWater: (String) -> Unit, onMenu: (String) -> Unit = {}) : LinearLayout(ctx) {
     val tile = Tile(ctx, ctx.px(18).toFloat())
     private val name = ctx.text("", 15f, Kit.INK, 500)
     private val sub = ctx.text("", 12.5f, Kit.MUTED, 400).apply { tag = SECONDARY }
@@ -226,6 +226,8 @@ class PlantCard(ctx: Context, val plantId: String, onOpen: (String) -> Unit, onW
         addView(quick, LayoutParams(-1, -2).apply { setMargins(ctx.px(10), 0, ctx.px(10), ctx.px(10)) })
         isClickable = true
         setOnClickListener { onOpen(plantId) }
+        // Hold a card for its quick actions, removing included
+        setOnLongClickListener { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onMenu(plantId); true }
         // A card gives under the finger and springs back
         setOnTouchListener { v, e ->
             when (e.actionMasked) {
@@ -453,4 +455,88 @@ class LuxGauge(ctx: Context) : View(ctx) {
             c.drawCircle(mx.coerceIn(bar, w - bar), top + bar / 2, bar * 0.35f, p)
         }
     }
+}
+
+
+/**
+ * One plant as a row: the compact layout for a big garden. A small photo still holds its water,
+ * and the drop button appears only when the plant needs it.
+ */
+@SuppressLint("ViewConstructor")
+class PlantRow(ctx: Context, val plantId: String, onOpen: (String) -> Unit, onWater: (String) -> Unit, onMenu: (String) -> Unit) : LinearLayout(ctx) {
+    val tile = Tile(ctx, ctx.px(12).toFloat(), badge = false)
+    private val name = ctx.text("", 15.5f, Kit.INK, 500).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+    private val sub = ctx.text("", 13f, Kit.MUTED, 400).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+    private val dot = View(ctx)
+    private val quick = android.widget.ImageView(ctx).apply {
+        setImageDrawable(DropIcon(ctx))
+        scaleType = android.widget.ImageView.ScaleType.CENTER
+        background = rounded(tint(Kit.WATER, 0.2f), ctx.px(22).toFloat())
+        contentDescription = "Watered"
+        isClickable = true
+        setOnClickListener { onWater(plantId) }
+    }
+    var thirsty = false
+        private set
+
+    init {
+        orientation = HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(ctx.px(8), ctx.px(8), ctx.px(10), ctx.px(8))
+        background = rounded(Kit.SURFACE, ctx.px(16).toFloat())
+        addView(tile, LayoutParams(ctx.px(52), -2))
+        val words = LinearLayout(ctx).apply { orientation = VERTICAL; setPadding(ctx.px(14), 0, ctx.px(8), 0) }
+        words.addView(name)
+        val line = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        line.addView(dot, LayoutParams(ctx.px(6), ctx.px(6)).apply { marginEnd = ctx.px(7) })
+        line.addView(sub, LayoutParams(0, -2, 1f))
+        words.addView(line, LayoutParams(-1, -2).apply { topMargin = ctx.px(4) })
+        addView(words, LayoutParams(0, -2, 1f))
+        addView(quick, LayoutParams(ctx.px(44), ctx.px(44)))
+        isClickable = true
+        setOnClickListener { onOpen(plantId) }
+        setOnLongClickListener { performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); onMenu(plantId); true }
+    }
+
+    fun bind(p: Plant, s: Standing, animate: Boolean) {
+        thirsty = s.thirst == Thirst.THIRSTY
+        tile.bind(p, s, animate)
+        name.text = p.name
+        sub.text = Rhythm.dueText(s) + if (p.spot.isNotBlank()) "  ·  ${p.spot}" else ""
+        dot.background = rounded(thirstColor(s.thirst), 100f)
+        quick.visibility = if (s.thirst == Thirst.THIRSTY || s.thirst == Thirst.NEW || (s.thirst == Thirst.SOON && (s.remaining ?: 9.0) <= 1.0)) VISIBLE else INVISIBLE
+    }
+}
+
+/** Settings: three sliders, drawn so it matches the ink. */
+class SlidersIcon(ctx: Context) : View(ctx) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = ctx.px(1.6f).toFloat(); strokeCap = Paint.Cap.ROUND }
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        val left = w * 0.28f; val right = w * 0.72f
+        listOf(0.36f to 0.6f, 0.5f to 0.38f, 0.64f to 0.55f).forEach { (y, knob) ->
+            p.color = Kit.MUTED; p.style = Paint.Style.STROKE
+            c.drawLine(left, h * y, right, h * y, p)
+            p.color = Kit.INK; p.style = Paint.Style.FILL
+            c.drawCircle(left + (right - left) * knob, h * y, context.px(3).toFloat(), p)
+        }
+    }
+}
+
+/** A magnifier for the search field. */
+class SearchIcon(ctx: Context) : android.graphics.drawable.Drawable() {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ctx.px(1.8f).toFloat(); strokeCap = Paint.Cap.ROUND; color = Kit.MUTED }
+    private val s = ctx.px(18)
+    override fun getIntrinsicWidth() = s
+    override fun getIntrinsicHeight() = s
+    override fun draw(c: Canvas) {
+        val b = bounds; val r = b.width() * 0.3f
+        val cx = b.left + b.width() * 0.42f; val cy = b.top + b.height() * 0.42f
+        c.drawCircle(cx, cy, r, p)
+        c.drawLine(cx + r * 0.72f, cy + r * 0.72f, b.right - b.width() * 0.12f, b.bottom - b.height() * 0.12f, p)
+    }
+    override fun setAlpha(a: Int) { p.alpha = a }
+    override fun setColorFilter(f: android.graphics.ColorFilter?) { p.colorFilter = f }
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
 }

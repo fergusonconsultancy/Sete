@@ -47,8 +47,15 @@ class MainActivity : Activity() {
     private var round: RoundView? = null
     private lateinit var fab: TextView
     private lateinit var remindersPill: Pill
-    private val sections = LinkedHashMap<Thirst, Pair<LinearLayout, Grid>>()
+    /** A group of plants: its title row (tap to fold), and a grid of cards or a list of rows. */
+    private class Section(val box: LinearLayout, val toggle: TextView, val grid: Grid, val list: LinearLayout)
+    private val sections = LinkedHashMap<Thirst, Section>()
     private val cards = HashMap<String, PlantCard>()
+    private val rows = HashMap<String, PlantRow>()
+    private var query = ""
+    private var shownView = ""
+    private lateinit var noMatch: TextView
+    private lateinit var viewSwitch: Segmented
     private val main = Handler(Looper.getMainLooper())
     private var holdUntil = 0L
     private var crashed = false
@@ -72,15 +79,26 @@ class MainActivity : Activity() {
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
         if (Crash.show(this)) { crashed = true; return }
-        // The home's palette by day, its evening palette by night, following the phone
-        Kit.dark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
         Store.init(this)
+        // The home's palette by day, its evening palette by night: following the phone, or fixed in Settings
+        Kit.dark = when (Store.theme) {
+            "day" -> false
+            "night" -> true
+            else -> (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+        }
         Sound.init(this)
         Reminders.channel(this)
         Reminders.schedule(this)
 
 
         screen = Screen(this, "Sete", dayLabel())
+        // Settings, beside the status: always one tap away
+        (screen.status.parent as? LinearLayout)?.addView(SlidersIcon(this).apply {
+            contentDescription = "Settings"
+            background = rounded(0, px(20).toFloat(), Kit.HAIRLINE, px(1))
+            isClickable = true
+            setOnClickListener { performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); openSettings() }
+        }, LinearLayout.LayoutParams(px(40), px(40)).apply { marginStart = px(8) })
         verdict = text("", 19f, Kit.INK, 300).apply { setLineSpacing(0f, 1.3f) }
         screen.add(verdict, px(14))
         // The thirstiest plant speaks for the garden
@@ -92,6 +110,30 @@ class MainActivity : Activity() {
         tallies = Grid(this, minColumnDp = 150, gapDp = 8)
         screen.add(tallies, px(18))
 
+        // Find a plant, and choose how the garden is laid out
+        val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val search = field("Search plants", "", caps = false).apply {
+            setCompoundDrawablesRelativeWithIntrinsicBounds(SearchIcon(context), null, null, null)
+            compoundDrawablePadding = px(10)
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            setOnEditorActionListener { v, _, _ ->
+                (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(v.windowToken, 0); true
+            }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(e: android.text.Editable?) { query = e?.toString()?.trim().orEmpty(); render() }
+                override fun beforeTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(t: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
+        }
+        bar.addView(search, LinearLayout.LayoutParams(0, -2, 1f))
+        viewSwitch = Segmented(this, listOf("Cards", "List"), if (Store.view == "list") 1 else 0) { i ->
+            Store.view = if (i == 1) "list" else "cards"; render()
+        }
+        bar.addView(viewSwitch, LinearLayout.LayoutParams(px(148), -2).apply { marginStart = px(10) })
+        screen.add(bar, px(22))
+        noMatch = text("", 15f, Kit.MUTED).apply { visibility = View.GONE }
+        screen.add(noMatch, px(24))
+
         val titles = mapOf(
             Thirst.THIRSTY to ("Thirsty" to "Due now. One tap logs it."),
             Thirst.NEW to ("Start here" to "Not logged yet. Feel the soil, then tap Watered or Still damp."),
@@ -100,12 +142,27 @@ class MainActivity : Activity() {
         )
         titles.forEach { (t, words) ->
             val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-            box.addView(text(words.first, 27f, Kit.INK, displayFace = true))
+            // The title row folds the group away and back: tap it
+            val head = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
+                isClickable = true
+                setOnClickListener {
+                    performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+                    Store.folded = Store.folded.let { f -> if (t.name in f) f - t.name else f + t.name }
+                    render()
+                }
+            }
+            head.addView(text(words.first, 27f, Kit.INK, displayFace = true), LinearLayout.LayoutParams(0, -2, 1f))
+            val toggle = text("", 13.5f, Kit.CHAMPAGNE, 500).apply { setPadding(px(12), px(6), 0, px(6)) }
+            head.addView(toggle)
+            box.addView(head)
             box.addView(text(words.second, 13f, Kit.MUTED).apply { tag = SECONDARY }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4) })
             box.addView(View(this).apply { setBackgroundColor(Kit.HAIRLINE) }, LinearLayout.LayoutParams(-1, px(1)).apply { topMargin = px(10); bottomMargin = px(14) })
             val grid = Grid(this)
             box.addView(grid, LinearLayout.LayoutParams(-1, -2))
-            sections[t] = box to grid
+            val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+            box.addView(list, LinearLayout.LayoutParams(-1, -2))
+            sections[t] = Section(box, toggle, grid, list)
             screen.add(box, px(34))
         }
         screen.add(text("Watering rhythms are general guidance for UK homes, stretched automatically through autumn and winter. " +
@@ -230,32 +287,70 @@ class MainActivity : Activity() {
 
         // Just after a tap, let the water rise in place before the card moves to its new group
         if (now < holdUntil) {
-            plants.forEach { p -> cards[p.id]?.bind(p, standing.getValue(p.id), animate = true) }
+            plants.forEach { p -> cards[p.id]?.bind(p, standing.getValue(p.id), animate = true); rows[p.id]?.bind(p, standing.getValue(p.id), animate = true) }
             main.removeCallbacks(renderLater); main.postDelayed(renderLater, holdUntil - now + 20)
             return
         }
 
         val groups = plants.groupBy { standing.getValue(it.id).thirst }
-        sections.forEach { (t, pair) ->
-            val (box, grid) = pair
-            val list = (groups[t] ?: emptyList()).let { l ->
-                if (t == Thirst.NEW) l.sortedBy { it.order } else l.sortedBy { standing.getValue(it.id).remaining ?: 0.0 }
-            }
-            box.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+        // Switching between cards and rows starts both containers afresh
+        val asList = Store.view == "list"
+        viewSwitch.select(if (asList) 1 else 0)
+        if (shownView != Store.view) {
+            shownView = Store.view
+            sections.values.forEach { it.grid.removeAllViews(); it.list.removeAllViews() }
+            cards.clear(); rows.clear()
+        }
+        // Search looks at the name, the type, its Latin name and where it lives
+        val q = query.lowercase()
+        fun matches(p: Plant) = q.isEmpty() || listOf(p.name, Kinds[p.kind].label, Kinds[p.kind].latin, p.spot).any { it.lowercase().contains(q) }
+        fun ordered(t: Thirst, l: List<Plant>) = when (Store.sort) {
+            "name" -> l.sortedBy { it.name.lowercase() }
+            "place" -> l.sortedWith(compareBy({ it.spot.lowercase().ifBlank { "~" } }, { it.name.lowercase() }))
+            else -> if (t == Thirst.NEW) l.sortedBy { it.order } else l.sortedBy { standing.getValue(it.id).remaining ?: 0.0 }
+        }
+        var shown = 0
+        sections.forEach { (t, sec) ->
+            val list = ordered(t, (groups[t] ?: emptyList()).filter { matches(it) })
+            shown += list.size
+            sec.box.visibility = if (list.isEmpty()) View.GONE else View.VISIBLE
+            val folded = t.name in Store.folded && q.isEmpty()
+            sec.toggle.text = if (folded) "Show ${list.size}  ›" else "Fold"
+            sec.grid.visibility = if (!folded && !asList) View.VISIBLE else View.GONE
+            sec.list.visibility = if (!folded && asList) View.VISIBLE else View.GONE
             val want = list.map { it.id }
-            val have = (0 until grid.childCount).map { (grid.getChildAt(it) as PlantCard).plantId }
-            list.forEach { p ->
-                val existed = cards.containsKey(p.id)
-                val card = cards.getOrPut(p.id) { PlantCard(this, p.id, ::openPlant) { id -> act(id, Store.Act.WATERED) } }
-                card.bind(p, standing.getValue(p.id), animate = existed)
-            }
-            if (want != have) {
-                grid.removeAllViews()
-                want.forEach { id -> cards[id]?.let { c -> (c.parent as? android.view.ViewGroup)?.removeView(c); grid.addView(c) } }
+            if (asList) {
+                val have = (0 until sec.list.childCount).map { (sec.list.getChildAt(it) as PlantRow).plantId }
+                list.forEach { p ->
+                    val existed = rows.containsKey(p.id)
+                    rows.getOrPut(p.id) { PlantRow(this, p.id, ::openPlant, { id -> act(id, Store.Act.WATERED) }, ::openMenu) }
+                        .bind(p, standing.getValue(p.id), animate = existed)
+                }
+                if (want != have) {
+                    sec.list.removeAllViews()
+                    want.forEach { id -> rows[id]?.let { r ->
+                        (r.parent as? android.view.ViewGroup)?.removeView(r)
+                        sec.list.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = px(8) })
+                    } }
+                }
+            } else {
+                val have = (0 until sec.grid.childCount).map { (sec.grid.getChildAt(it) as PlantCard).plantId }
+                list.forEach { p ->
+                    val existed = cards.containsKey(p.id)
+                    cards.getOrPut(p.id) { PlantCard(this, p.id, ::openPlant, { id -> act(id, Store.Act.WATERED) }, ::openMenu) }
+                        .bind(p, standing.getValue(p.id), animate = existed)
+                }
+                if (want != have) {
+                    sec.grid.removeAllViews()
+                    want.forEach { id -> cards[id]?.let { c -> (c.parent as? android.view.ViewGroup)?.removeView(c); sec.grid.addView(c) } }
+                }
             }
         }
-        val gone = cards.keys - plants.map { it.id }.toSet()
-        gone.forEach { id -> cards.remove(id)?.let { c -> (c.parent as? android.view.ViewGroup)?.removeView(c) } }
+        val ids = plants.map { it.id }.toSet()
+        (cards.keys - ids).forEach { id -> cards.remove(id)?.let { c -> (c.parent as? android.view.ViewGroup)?.removeView(c) } }
+        (rows.keys - ids).forEach { id -> rows.remove(id)?.let { r -> (r.parent as? android.view.ViewGroup)?.removeView(r) } }
+        noMatch.text = "No plants match \u201c$query\u201d. Try a name, a type like orchid, or a place like bay window."
+        noMatch.visibility = if (q.isNotEmpty() && shown == 0) View.VISIBLE else View.GONE
 
         val n = { t: Thirst -> groups[t]?.size ?: 0 }
         val thirsty = n(Thirst.THIRSTY); val soon = n(Thirst.SOON); val fresh = n(Thirst.NEW)
@@ -307,13 +402,15 @@ class MainActivity : Activity() {
 
     /** Scrolls to a group and lifts its title, or says why there is nothing there. */
     private fun goTo(t: Thirst, @Suppress("UNUSED_PARAMETER") detail: String) {
-        val box = sections[t]?.first ?: return
+        val box = sections[t]?.box ?: return
+        // Tapping a chip unfolds its group
+        if (t.name in Store.folded) { Store.folded = Store.folded - t.name; render() }
         if (box.visibility != View.VISIBLE) {
             toast(if (t == Thirst.THIRSTY) "Nobody's thirsty right now." else "Nothing in this group right now.")
             return
         }
         screen.root.smoothScrollTo(0, (box.top - px(16)).coerceAtLeast(0))
-        val title = box.getChildAt(0)
+        val title = (box.getChildAt(0) as LinearLayout).getChildAt(0)
         title.animate().cancel()
         title.alpha = 0.25f
         title.animate().alpha(1f).setStartDelay(260).setDuration(520).start()
@@ -581,7 +678,10 @@ class MainActivity : Activity() {
                 b.addView(View(this).apply { setBackgroundColor(Kit.HAIRLINE) }, LinearLayout.LayoutParams(-1, px(1)))
             }
         }
-        b.addView(quiet("Edit plant") { openEdit(id) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26) })
+        val ends = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        ends.addView(quiet("Edit plant") { openEdit(id) }, LinearLayout.LayoutParams(0, -2, 1f))
+        ends.addView(quiet("Remove from the garden", color = Kit.THIRST) { closeSheet(); removePlant(id) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(10) })
+        b.addView(ends, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26) })
     }
 
     // ---- Light meter ---------------------------------------------------------------------------
@@ -756,15 +856,8 @@ class MainActivity : Activity() {
             closeSheet()
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(26) })
 
-        if (p != null) {
-            var sure = false
-            lateinit var del: View
-            del = quiet("Remove plant", color = Kit.THIRST) {
-                if (!sure) { sure = true; ((del as LinearLayout).getChildAt(0) as TextView).text = "Tap again to remove ${p.name}" }
-                else { Store.remove(p.id); closeSheet(); toast("Removed ${p.name}") { Store.put(p) } }
-            }
-            b.addView(del, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12) })
-        }
+        if (p != null) b.addView(quiet("Remove from the garden", color = Kit.THIRST) { closeSheet(); removePlant(p.id) },
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12) })
         showPreview()
     }
 
@@ -899,6 +992,76 @@ class MainActivity : Activity() {
 
     // ---- Settings ------------------------------------------------------------------------------
 
+    // ---- Quick actions and removing ------------------------------------------------------------
+
+    /** Hold a plant for this: water it, note damp soil, open, edit or remove it. */
+    private fun openMenu(id: String) {
+        val p = Store.get(id) ?: return
+        sheetRefresh = null; onSheetClosed = null
+        openSheet { b ->
+            val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            head.addView(Tile(this, px(12).toFloat(), badge = false).apply { bind(p, Rhythm.standing(p), false) }, LinearLayout.LayoutParams(px(56), -2))
+            val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(14), 0, 0, 0) }
+            words.addView(text(p.name, 26f, Kit.INK, displayFace = true))
+            words.addView(text(Rhythm.dueText(Rhythm.standing(p)) + if (p.spot.isNotBlank()) "  ·  ${p.spot}" else "", 13.5f, Kit.MUTED))
+            head.addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            b.addView(head)
+            b.addView(pour("Watered") { closeSheet(); act(id, Store.Act.WATERED) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(20) })
+            val two = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            two.addView(quiet("Soil still damp") { closeSheet(); act(id, Store.Act.DAMP) }, LinearLayout.LayoutParams(0, -2, 1f))
+            two.addView(quiet("Open its page") { openPlant(id) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(10) })
+            b.addView(two, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
+            val three = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            three.addView(quiet("Edit") { openEdit(id) }, LinearLayout.LayoutParams(0, -2, 1f))
+            three.addView(quiet("Remove", color = Kit.THIRST) { closeSheet(); removePlant(id) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = px(10) })
+            b.addView(three, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(10) })
+        }
+    }
+
+    /** Removes at once, with Undo; the last ten removed can also be brought back from Settings. */
+    private fun removePlant(id: String) {
+        val p = Store.get(id) ?: return
+        Store.remove(id)
+        Sound.play(Sound.Cue.TAP)
+        toast("Removed ${p.name}") { Store.restore(id) }
+    }
+
+    /** Every plant in one list, to remove several at once or bring back ones removed by mistake. */
+    private fun openManage() {
+        sheetRefresh = { openSheet(refresh = true) { fillManage(it) } }
+        onSheetClosed = null
+        openSheet { fillManage(it) }
+    }
+
+    private fun fillManage(b: LinearLayout) {
+        val all = Store.all().sortedBy { it.name.lowercase() }
+        b.addView(text("Your plants", 32f, Kit.INK, displayFace = true))
+        b.addView(text("${all.size} in the garden. Removing one keeps it among the recently removed, so it can come back.", 14f, Kit.MUTED),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(6) })
+        fun line(p: Plant, action: String, colour: Int, onTap: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, px(8), 0, px(8))
+            addView(Tile(context, px(10).toFloat(), badge = false).apply { bind(p, Rhythm.standing(p), false) }, LinearLayout.LayoutParams(px(40), -2))
+            val words = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(px(12), 0, px(8), 0) }
+            words.addView(text(p.name, 15f, Kit.INK, 500).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            if (p.spot.isNotBlank()) words.addView(text(p.spot, 12.5f, Kit.MUTED).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(text(action, 14f, colour, 500).apply {
+                setPadding(px(14), px(10), px(4), px(10)); isClickable = true
+                setOnClickListener { performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); onTap() }
+            })
+        }
+        all.forEach { p -> b.addView(line(p, "Remove", Kit.THIRST) { removePlant(p.id) }) }
+        val gone = Store.removed()
+        if (gone.isNotEmpty()) {
+            section(b, "Recently removed")
+            gone.forEach { p -> b.addView(line(p, "Bring back", Kit.CHAMPAGNE) { Store.restore(p.id); toast("${p.name} is back in the garden") }) }
+        }
+    }
+
+    /** Cards and rows are built fresh when the layout changes. */
+    private fun recreateGarden() { shownView = ""; render() }
+
     private fun openSettings() {
         sheetRefresh = { openSheet(refresh = true) { fillSettings(it) } }
         openSheet { fillSettings(it) }
@@ -957,6 +1120,42 @@ class MainActivity : Activity() {
             if (!notificationsOn()) askNotifications() else { Reminders.round(this, "morning", test = true); toast("Sent. Check the notification shade.") }
         })
         b.addView(card)
+
+        section(b, "Garden")
+        val garden = Card(this)
+        garden.row(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(px(18), px(14), px(18), px(14))
+            addView(text("Layout", 16f, Kit.INK, 450))
+            addView(text("Cards show big photos; the list fits far more on screen", 13f, Kit.MUTED), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(3) })
+            addView(Segmented(context, listOf("Cards", "List"), if (Store.view == "list") 1 else 0) { i -> Store.view = if (i == 1) "list" else "cards"; recreateGarden() },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12) })
+        })
+        garden.row(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(px(18), px(14), px(18), px(14))
+            addView(text("Order within each group", 16f, Kit.INK, 450))
+            val sorts = listOf("due", "name", "place")
+            addView(Segmented(context, listOf("Due first", "A to Z", "By place"), sorts.indexOf(Store.sort).coerceAtLeast(0)) { i -> Store.sort = sorts[i]; render() },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12) })
+        })
+        garden.row(Row(this, "Fold away Content", "Plants that need nothing today stay tucked away until you tap", Toggle(this, Thirst.CONTENT.name in Store.folded) { on ->
+            Store.folded = if (on) Store.folded + Thirst.CONTENT.name else Store.folded - Thirst.CONTENT.name; render()
+        }))
+        garden.row(Row(this, "Your plants", "${Store.all().size} in the garden${Store.removed().size.let { if (it > 0) ", $it recently removed" else "" }}",
+            endValue("Manage", Kit.CHAMPAGNE)) { openManage() })
+        b.addView(garden)
+
+        section(b, "Look")
+        val look = Card(this)
+        look.row(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(px(18), px(14), px(18), px(14))
+            addView(text("Day or night palette", 16f, Kit.INK, 450))
+            addView(text("Greige, oak and brick by day; matte black and Edison amber by night", 13f, Kit.MUTED), LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(3) })
+            val themes = listOf("phone", "day", "night")
+            addView(Segmented(context, listOf("Follow phone", "Day", "Night"), themes.indexOf(Store.theme).coerceAtLeast(0)) { i ->
+                Store.theme = themes[i]; main.postDelayed({ recreate() }, 340)
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(12) })
+        })
+        b.addView(look)
 
         section(b, "You")
         val me = field("Your name", Store.me)
