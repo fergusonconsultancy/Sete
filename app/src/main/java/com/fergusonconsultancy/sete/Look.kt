@@ -21,11 +21,12 @@ object Look {
      * was: EV100 = log2(N² / t) − log2(ISO / 100), and illuminance ≈ 2.5 × 2^EV100 lux
      * (the incident-light meter constant of 250 over 100). Indoors, a rough guide only.
      */
+    @Suppress("DEPRECATION")
     fun luxFromExif(stream: InputStream): Double? = runCatching {
         val e = ExifInterface(stream)
         val t = e.getAttributeDouble(ExifInterface.TAG_EXPOSURE_TIME, 0.0)
         val n = e.getAttributeDouble(ExifInterface.TAG_F_NUMBER, 0.0)
-        val iso = e.getAttributeInt(ExifInterface.TAG_PHOTOGRAPHIC_SENSITIVITY, 0).toDouble()
+        val iso = e.getAttributeInt(ExifInterface.TAG_ISO_SPEED_RATINGS, 0).toDouble()
         if (t <= 0 || n <= 0 || iso <= 0) return@runCatching null
         val ev100 = ln(n * n / t) / ln(2.0) - ln(iso / 100.0) / ln(2.0)
         2.5 * 2.0.pow(ev100)
