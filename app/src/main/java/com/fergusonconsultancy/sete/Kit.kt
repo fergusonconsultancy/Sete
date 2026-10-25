@@ -52,20 +52,38 @@ object Doctrine {
  * to a stock grey Android button.
  */
 object Kit {
-    const val GROUND = 0xFF0E1311.toInt()
-    const val SURFACE = 0xFF151C18.toInt()
-    const val RAISED = 0xFF1D2621.toInt()
-    const val HAIRLINE = 0x1AF6F1E6
-    const val INK = 0xFFF6F1E6.toInt()
-    const val MUTED = 0xFF96A098.toInt()
-    const val CHAMPAGNE = 0xFFD9BB86.toInt()
-    const val ROSSO = 0xFFD7262E.toInt()
-    const val GOOD = 0xFF7FC79A.toInt()
-    const val WARN = 0xFFE0A15A.toInt()
+    /**
+     * Sete's palette comes from the home it lives in (25 Oct 2026). By day: greige walls, matte
+     * iron, oak doors, exposed brick, sage zellige and copper. By night: the kitchen's matte
+     * black, brick and Edison amber. It follows the phone's light or dark setting.
+     */
+    @Volatile var dark = true
+
+    private fun pick(night: Long, day: Long) = (if (dark) night else day).toInt()
+
+    /** Walls by day, matte black by night. */
+    val GROUND get() = pick(0xFF121314, 0xFFECE8E1)
+    val SURFACE get() = pick(0xFF1C1D1E, 0xFFF6F3EE)
+    val RAISED get() = pick(0xFF27282A, 0xFFFFFFFF)
+    val HAIRLINE get() = pick(0x26F2EEE6, 0x24221E1A)
+    /** Iron by day, ivory by night. */
+    val INK get() = pick(0xFFF2EEE6, 0xFF1D1B19)
+    val MUTED get() = pick(0xFF9D9A95, 0xFF6C655E)
+    /** The accent, for what is chosen: Edison amber by night, copper by day. */
+    val CHAMPAGNE get() = pick(0xFFE2A857, 0xFF9A5B30)
+    val ROSSO get() = pick(0xFFD7262E, 0xFFB01E26)
+    /** Sage, from the bathroom's zellige and the patio's stencilled tiles. */
+    val GOOD get() = pick(0xFF8FB58A, 0xFF557D50)
+    val WARN get() = pick(0xFFE0A15A, 0xFFA8652A)
     // Sete's own material: water. Deep where it pools, bright at the meniscus.
-    const val WATER = 0xFF6FB8C9.toInt()
-    const val WATER_DEEP = 0xFF2E7C90.toInt()
-    const val THIRST = 0xFFE39467.toInt()
+    val WATER get() = pick(0xFF6FB8C9, 0xFF2F86A0)
+    val WATER_DEEP get() = pick(0xFF2E7C90, 0xFF24697D)
+    /** Text on water: always pale. */
+    const val ON_WATER = 0xFFF6F1E6.toInt()
+    /** Thirst is the chimney breast's brick. */
+    val THIRST get() = pick(0xFFD06A44, 0xFFB04A2A)
+    /** What sits behind a sheet. */
+    val SCRIM get() = pick(0xB8000000, 0x66141210)
 
     private var display: Typeface? = null
     private val jost = HashMap<Int, Typeface>()
@@ -445,7 +463,7 @@ class Swatch(ctx: Context, private val paint: (Canvas, RectF) -> Unit) : View(ct
 fun Context.primary(label: String, filled: Boolean = true, onTap: () -> Unit) = text(label, 16f, if (filled) Kit.GROUND else Kit.INK, 500).apply {
     gravity = Gravity.CENTER
     setPadding(px(20), px(17), px(20), px(17))
-    background = if (filled) rounded(Kit.CHAMPAGNE, px(28).toFloat()) else rounded(0, px(28).toFloat(), 0x40F6F1E6, px(1))
+    background = if (filled) rounded(Kit.CHAMPAGNE, px(28).toFloat()) else rounded(0, px(28).toFloat(), Kit.HAIRLINE, px(1))
     isClickable = true
     setOnClickListener { it.performHapticFeedback(HapticFeedbackConstants.CONFIRM); onTap() }
 }

@@ -5,6 +5,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   launch:
     runs-on: ubuntu-latest
@@ -38,3 +41,13 @@ jobs:
           arch: x86_64
           disable-animations: false
           script: bash .github/launch.sh
+
+      - name: Publish screenshots to the screens branch
+        if: always()
+        run: |
+          [ -d shots ] || exit 0
+          cd shots
+          git init -q -b screens
+          git config user.name "Sete launch test"; git config user.email "actions@users.noreply.github.com"
+          git add -A && git commit -qm "Screens from ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" screens

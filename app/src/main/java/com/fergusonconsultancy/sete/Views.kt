@@ -31,9 +31,10 @@ import kotlin.math.sin
 
 fun tint(color: Int, a: Float): Int = (((color ushr 24) * a).toInt().coerceIn(0, 255) shl 24) or (color and 0xFFFFFF)
 
-val THIRST_COLOR = mapOf(
-    Thirst.THIRSTY to Kit.THIRST, Thirst.SOON to Kit.CHAMPAGNE, Thirst.CONTENT to Kit.GOOD, Thirst.NEW to Kit.MUTED,
-)
+/** Each state's colour, read from the current palette. */
+fun thirstColor(t: Thirst): Int = when (t) {
+    Thirst.THIRSTY -> Kit.THIRST; Thirst.SOON -> Kit.CHAMPAGNE; Thirst.CONTENT -> Kit.GOOD; Thirst.NEW -> Kit.MUTED
+}
 val THIRST_LABEL = mapOf(Thirst.THIRSTY to "Thirsty", Thirst.SOON to "Soon", Thirst.CONTENT to "Content", Thirst.NEW to "New")
 
 /**
@@ -189,7 +190,7 @@ class Tile(ctx: Context, private val radius: Float, private val badge: Boolean =
             r.set(context.px(9).toFloat(), context.px(9).toFloat(), context.px(9) + pad + dot + context.px(6) + tw + pad, context.px(9) + bh)
             pill.color = tint(Kit.GROUND, 0.74f)
             c.drawRoundRect(r, bh / 2, bh / 2, pill)
-            pill.color = THIRST_COLOR.getValue(thirst)
+            pill.color = thirstColor(thirst)
             c.drawCircle(r.left + pad + dot / 2, r.centerY(), dot / 2, pill)
             c.drawText(word, r.left + pad + dot + context.px(6), r.centerY() + label.textSize * 0.36f, label)
         }
@@ -351,15 +352,33 @@ class Flow(ctx: Context) : ViewGroup(ctx) {
     }
 }
 
-/** A tally chip: a coloured dot, a number and a word. */
-fun Context.tally(n: Int, word: String, color: Int): View = LinearLayout(this).apply {
-    orientation = LinearLayout.HORIZONTAL
-    gravity = Gravity.CENTER_VERTICAL
-    setPadding(px(12), px(7), px(14), px(7))
-    background = rounded(0, px(20).toFloat(), Kit.HAIRLINE, px(1))
-    addView(View(context).apply { background = rounded(color, 100f) }, LinearLayout.LayoutParams(px(7), px(7)).apply { marginEnd = px(8) })
-    addView(text("$n", 17f, Kit.INK, 500).apply { fontFeatureSettings = "tnum" })
-    addView(text(word, 13f, Kit.MUTED, 400), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(6) })
+/**
+ * A tally chip: a coloured dot, a number and a word, with a line underneath that says what is
+ * behind the number. Tapping it takes you to that group.
+ */
+@SuppressLint("ClickableViewAccessibility")
+fun Context.tally(n: Int, word: String, color: Int, detail: String, onTap: () -> Unit): View = LinearLayout(this).apply {
+    orientation = LinearLayout.VERTICAL
+    setPadding(px(14), px(9), px(16), px(10))
+    background = rounded(0, px(18).toFloat(), Kit.HAIRLINE, px(1))
+    val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    head.addView(View(context).apply { background = rounded(color, 100f) }, LinearLayout.LayoutParams(px(7), px(7)).apply { marginEnd = px(8) })
+    head.addView(text("$n", 17f, Kit.INK, 500).apply { fontFeatureSettings = "tnum" })
+    head.addView(text(word, 13f, Kit.MUTED, 400), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(6) })
+    head.addView(text("›", 15f, Kit.MUTED, 300), LinearLayout.LayoutParams(-2, -2).apply { marginStart = px(8) })
+    addView(head)
+    addView(text(detail, 12f, color, 400).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; tag = SECONDARY },
+        LinearLayout.LayoutParams(-2, -2).apply { topMargin = px(3) })
+    isClickable = true
+    contentDescription = "$n $word. $detail"
+    setOnClickListener { it.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK); onTap() }
+    setOnTouchListener { v, e ->
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(80).start()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> v.animate().scaleX(1f).scaleY(1f).setDuration(260).setInterpolator(OvershootInterpolator(2f)).start()
+        }
+        false
+    }
 }
 
 /** A text field in the kit. */
@@ -392,10 +411,42 @@ fun Context.quiet(title: String, sub: String? = null, color: Int = Kit.INK, onTa
 }
 
 /** The main action in water: a full-width pill. */
-fun Context.pour(label: String, onTap: () -> Unit): TextView = text(label, 16.5f, Kit.INK, 500).apply {
+fun Context.pour(label: String, onTap: () -> Unit): TextView = text(label, 16.5f, Kit.ON_WATER, 500).apply {
     gravity = Gravity.CENTER
     setPadding(px(20), px(17), px(20), px(17))
     background = rounded(Kit.WATER_DEEP, px(28).toFloat())
     isClickable = true
     setOnClickListener { onTap() }
+}
+
+/** The light meter's scale: four bands on a logarithmic bar, low to direct sun, with the reading's mark. */
+class LuxGauge(ctx: Context) : View(ctx) {
+    var lux = -1.0
+        set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = ctx.px(10.5f).toFloat(); typeface = Kit.sans(ctx, 500); color = Kit.MUTED }
+    private val r = RectF()
+    private fun x(v: Double, w: Float): Float {
+        val lo = kotlin.math.log10(50.0); val hi = kotlin.math.log10(30000.0)
+        return (((kotlin.math.log10(v.coerceIn(50.0, 30000.0)) - lo) / (hi - lo)) * w).toFloat()
+    }
+
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat(); val bar = context.px(10).toFloat(); val top = context.px(6).toFloat()
+        val edges = listOf(50.0, 800.0, 2500.0, 10000.0, 30000.0)
+        val shades = listOf(0.25f, 0.45f, 0.7f, 1f)
+        for (i in 0 until 4) {
+            p.color = tint(Kit.CHAMPAGNE, shades[i])
+            r.set(x(edges[i], w) + if (i > 0) context.px(2) else 0, top, x(edges[i + 1], w), top + bar)
+            c.drawRoundRect(r, bar / 2, bar / 2, p)
+            c.drawText(Light.values()[i].label, r.left, top + bar + label.textSize + context.px(6), label)
+        }
+        if (lux >= 0) {
+            val mx = x(lux, w)
+            p.color = Kit.INK
+            c.drawCircle(mx.coerceIn(bar, w - bar), top + bar / 2, bar * 0.85f, p)
+            p.color = Kit.GROUND
+            c.drawCircle(mx.coerceIn(bar, w - bar), top + bar / 2, bar * 0.35f, p)
+        }
+    }
 }

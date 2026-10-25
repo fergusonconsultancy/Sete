@@ -34,11 +34,42 @@ object Store {
                 val a = JSONObject(file.readText()).getJSONArray("plants")
                 for (i in 0 until a.length()) Plant.fromJson(a.getJSONObject(i)).let { plants[it.id] = it }
             }
+            // Gardens from before spots existed: start each photographed plant from its photo's spot
+            var moved = false
+            plants.values.toList().forEach { p ->
+                val seed = Seed.spots[p.id]
+                if (seed != null && p.light == null && p.pot == null && p.lightFrom.isEmpty()) {
+                    plants[p.id] = p.copy(light = seed.first, heat = seed.second, pot = seed.third, lightFrom = "photo"); moved = true
+                }
+            }
+            if (moved) save()
         } else {
             Seed.plants(System.currentTimeMillis()).forEach { plants[it.id] = it }
             save()
         }
         ready = true
+        // Each photo's leaf colour, measured once, so later photos have something to compare with
+        Thread { baselines() }.start()
+    }
+
+    private fun baselines() {
+        all().filter { it.reads.isEmpty() && it.photo.isNotBlank() }.forEach { p ->
+            val bmp = Photos.get(app, p) ?: return@forEach
+            val g = Look.green(bmp) ?: return@forEach
+            val now = get(p.id) ?: return@forEach
+            if (now.reads.isEmpty()) synchronized(this) { plants[p.id] = now.copy(reads = listOf(Read(now.photoAt ?: now.updated, g))); save() }
+        }
+    }
+
+    /** A new photo of a plant: kept with its leaf colour and, if the photo could tell, the light. */
+    fun newPhoto(id: String, photo: String, green: Double?, lux: Double?): Plant? {
+        val p = get(id) ?: return null
+        val now = System.currentTimeMillis()
+        var next = p.copy(photo = photo, photoAt = now, reads = if (green != null) (listOf(Read(now, green)) + p.reads).take(12) else p.reads)
+        // A photo's light estimate never overrides a measured reading
+        if (lux != null && p.lightFrom != "measured" && p.lightFrom != "set") next = next.copy(light = Light.fromLux(lux), lux = lux, luxAt = now, lightFrom = "photo")
+        put(next)
+        return next
     }
 
     // ---- Settings ---------------------------------------------------------------------------
