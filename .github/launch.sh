@@ -93,11 +93,12 @@ adb shell input keyevent KEYCODE_BACK; sleep 1
 plants() { adb shell run-as $PKG cat files/garden.json | python3 -c "import sys,json;print(len(json.load(sys.stdin)['plants']))"; }
 adb shell am start -S -W -n $PKG/.MainActivity; sleep 5
 tap_text "Search plants"; sleep 1
-adb shell input text orchid; sleep 2
-adb shell input keyevent KEYCODE_BACK; sleep 1
+adb shell input text orchid; sleep 1
+adb shell input keyevent KEYCODE_ENTER; sleep 2
 shot 12-search
-for i in 1 2 3 4 5 6; do adb shell input keyevent KEYCODE_DEL; done; sleep 1
-adb shell input keyevent KEYCODE_BACK; sleep 1
+tap_text "orchid"; sleep 1
+for i in 1 2 3 4 5 6; do adb shell input keyevent KEYCODE_DEL; done
+adb shell input keyevent KEYCODE_ENTER; sleep 2
 tap_text "List"; sleep 2
 shot 13-list
 n0=$(plants)

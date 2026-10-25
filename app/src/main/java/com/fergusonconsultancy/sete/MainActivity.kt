@@ -354,11 +354,11 @@ class MainActivity : Activity() {
 
         val n = { t: Thirst -> groups[t]?.size ?: 0 }
         val thirsty = n(Thirst.THIRSTY); val soon = n(Thirst.SOON); val fresh = n(Thirst.NEW)
-        // The header pill names the most urgent state, so it never contradicts the line beneath it
+        // The header pill names the most urgent state, in the same order as the line beneath it
         val (pill, pillColour) = when {
             thirsty > 0 -> "$thirsty thirsty" to Kit.THIRST
-            soon > 0 -> "$soon due soon" to Kit.CHAMPAGNE
             fresh > 0 -> "$fresh to check" to Kit.MUTED
+            soon > 0 -> "$soon due soon" to Kit.CHAMPAGNE
             else -> "All content" to Kit.GOOD
         }
         screen.status.set(pill, pillColour)
