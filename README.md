@@ -7,6 +7,9 @@ Each plant's photo holds its water: the level is what is left of its last drink 
 - **Reminders that work from the lock screen and cover screen.** A morning round at a time you choose, and an evening nudge at 7pm for anything still thirsty. Each thirsty plant arrives as its own notification with **Watered** and **Still damp** buttons, bundled under one summary.
 - **The soil decides.** *Still damp* waits two days and learns to wait longer; *Bone dry* waters and comes round sooner. Rhythms stretch automatically through autumn and winter.
 - **Twenty plants already in,** photographed on 25 Oct 2026, with what each photo showed, how to water it, its thirst signal and whether it is safe around pets.
+- **Adapts to where each plant lives.** Light (measured with the phone's light sensor, or estimated from a photo's exposure), a radiator nearby and the pot each change the rhythm, and each plant's page names every factor. A new photo is compared with the last for leaf colour. Everything is worked out on the phone; nothing is sent anywhere.
+- **Camera first.** **+ Plant** opens the camera; hold it to add without a photo.
+- **The home's palette:** greige walls, iron, oak, brick, sage and copper by day; matte black, brick and Edison amber by night, following the phone's light or dark setting.
 - **Optional sharing** between two phones, so a plant watered on one stays quiet on the other.
 
 ## Get the APK

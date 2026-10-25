@@ -440,7 +440,10 @@ class LuxGauge(ctx: Context) : View(ctx) {
             p.color = tint(Kit.CHAMPAGNE, shades[i])
             r.set(x(edges[i], w) + if (i > 0) context.px(2) else 0, top, x(edges[i + 1], w), top + bar)
             c.drawRoundRect(r, bar / 2, bar / 2, p)
-            c.drawText(Light.values()[i].label, r.left, top + bar + label.textSize + context.px(6), label)
+            val name = Light.values()[i].label
+            // The last band's name sits flush right so it never runs off the end
+            val tx = if (i == 3) w - label.measureText(name) else r.left
+            c.drawText(name, tx, top + bar + label.textSize + context.px(6), label)
         }
         if (lux >= 0) {
             val mx = x(lux, w)

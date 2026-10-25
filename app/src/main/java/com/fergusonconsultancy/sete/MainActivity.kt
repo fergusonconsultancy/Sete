@@ -582,7 +582,7 @@ class MainActivity : Activity() {
         val sm = getSystemService(android.hardware.SensorManager::class.java)
         val sensor = sm?.getDefaultSensor(android.hardware.Sensor.TYPE_LIGHT)
         var lux = -1.0
-        val number = text("…", 46f, Kit.INK, displayFace = true).apply { fontFeatureSettings = "tnum" }
+        val number = text("…", 44f, Kit.INK, 300).apply { fontFeatureSettings = "tnum" }
         val band = text("", 17f, Kit.CHAMPAGNE, 500)
         val detail = text("", 14f, Kit.MUTED).apply { setLineSpacing(0f, 1.25f) }
         val gauge = LuxGauge(this)
