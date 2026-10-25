@@ -1,0 +1,7 @@
+Archive:  model.tflite
+  Length      Date    Time    Name
+---------  ---------- -----   ----
+    22360  2020-07-28 12:38   probability-labels.txt
+    40678  2020-07-28 12:38   probability-labels-en.txt
+---------                     -------
+    63038                     2 files

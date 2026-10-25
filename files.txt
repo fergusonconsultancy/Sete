@@ -1,0 +1,7 @@
+total 5004
+drwxr-xr-x 2 runner runner    4096 Oct 25 20:22 .
+drwxr-xr-x 3 runner runner    4096 Oct 25 20:22 ..
+-rw-r--r-- 1 runner runner       0 Oct 25 20:22 files.txt
+-rw-r--r-- 1 runner runner   50093 Oct 25 20:22 labels.csv
+-rw-r--r-- 1 runner runner      79 Oct 25 20:22 model.sha256
+-rw-r--r-- 1 runner runner 5056146 Oct 25 20:22 model.tflite
