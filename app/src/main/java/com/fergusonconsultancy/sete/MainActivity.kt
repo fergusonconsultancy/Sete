@@ -490,7 +490,7 @@ class MainActivity : Activity() {
         val tile = Tile(this, px(16).toFloat(), badge = false).apply { bind(p, s, false) }
         hero.addView(tile, LinearLayout.LayoutParams(px(118), -2))
         val words = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(px(16), 0, 0, 0) }
-        words.addView(text(p.name, 30f, Kit.INK, displayFace = true))
+        words.addView(text(p.name, if (p.name.length > 14) 25f else 30f, Kit.INK, displayFace = true).apply { setLineSpacing(0f, 1.05f) })
         if (k.latin.isNotBlank()) words.addView(text(k.latin, 13.5f, Kit.MUTED).apply { setTypeface(typeface, android.graphics.Typeface.ITALIC) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(4) })
         words.addView(text(Personality[p.kind].title.uppercase(), 11f, Kit.CHAMPAGNE, 500).apply { letterSpacing = 0.18f },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = px(8) })

@@ -67,7 +67,13 @@ shot 04-chip-scrolled
 tap_any "Bird of Paradise" "Citrus Tree" "Christmas Cactus" "Little Spider Plant" "Bromeliad" "Orchid in Bloom" "Pilea" "Kalanchoe, Terracotta" "Peace Lily" "Cane Orchid" "Orchid with the Sloth" "Kalanchoe Cuttings" "Dieffenbachia" "Monstera" "Orchid, Dotted Pot" "Orchid, Wild Roots" "Kalanchoe, Fluted Pot" "Dragon Tree" "Aloe" "Big Spider Plant"
 sleep 2
 shot 05-plant-day
-adb shell input swipe 500 1800 500 700 400; sleep 1
+# Scroll the sheet until the light meter button shows
+for i in 1 2 3 4; do
+  adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+  grep -q 'Measure the light here' ui.xml && python3 -c "
+import re;x=open('ui.xml').read();m=re.search(r'text=\"Measure the light here\"[^>]*?bounds=\"\\[\\d+,(\\d+)\\]',x);import sys;sys.exit(0 if m and int(m.group(1))<1900 else 1)" && break
+  adb shell input swipe 540 1900 540 900 700; sleep 1
+done
 shot 06-plant-spot
 tap_text "Measure the light here"; sleep 4
 shot 07-meter
