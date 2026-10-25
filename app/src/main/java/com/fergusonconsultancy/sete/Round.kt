@@ -40,13 +40,20 @@ class RoundView(
     private val dots = Dots(ctx, queue.size)
     private val stage = FrameLayout(ctx)
     private var current: View? = null
+    private var finished = false
+    private var insets = intArrayOf(0, insetTop, 0, insetBottom)
+    private lateinit var col: LinearLayout
 
     init {
         setBackgroundColor(Kit.GROUND)
         isClickable = true // nothing reaches the garden underneath
-        val col = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(ctx.px(22), insetTop + ctx.px(14), ctx.px(22), insetBottom + ctx.px(18))
+        col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        pad()
+        // Follow the system bars and any cutout, which move to the sides in landscape
+        setOnApplyWindowInsetsListener { _, ins ->
+            val b = ins.getInsets(android.view.WindowInsets.Type.systemBars() or android.view.WindowInsets.Type.displayCutout())
+            insets = intArrayOf(b.left, b.top, b.right, b.bottom); pad()
+            ins
         }
         val bar = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val left = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -62,6 +69,23 @@ class RoundView(
         col.addView(stage, LinearLayout.LayoutParams(-1, 0, 1f))
         addView(col, LayoutParams(-1, -1))
         if (queue.isEmpty()) post { finish() } else post { show(0) }
+    }
+
+    private fun pad() = col.setPadding(ctx.px(22) + insets[0], insets[1] + ctx.px(14), ctx.px(22) + insets[2], insets[3] + ctx.px(16))
+
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); requestApplyInsets() }
+
+    /** Turning the phone (or unfolding it) rebuilds the plant on screen for its new shape. */
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration?) {
+        super.onConfigurationChanged(newConfig)
+        if (finished || busy) return
+        stage.post {
+            val p = Store.get(queue.getOrNull(index) ?: return@post) ?: return@post
+            stage.removeAllViews()
+            val card = card(p)
+            stage.addView(card, FrameLayout.LayoutParams(-1, -1))
+            current = card
+        }
     }
 
     fun close() {
@@ -86,32 +110,58 @@ class RoundView(
     private fun card(p: Plant): View {
         val s = Rhythm.standing(p)
         val ch = Personality[p.kind]
-        val col = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
-        val avail = ctx.resources.displayMetrics.widthPixels - ctx.px(44)
-        val room = ctx.resources.displayMetrics.heightPixels - insetTop - insetBottom - ctx.px(430)
-        val tileW = min(min(avail, ctx.px(300)), room.coerceAtLeast(ctx.px(150)) * 4 / 5)
+        val dm = ctx.resources.displayMetrics
+        // The stage's real size once laid out; before that, the screen less the bars
+        val sw = stage.width.takeIf { it > 0 } ?: (dm.widthPixels - insets[0] - insets[2] - ctx.px(44))
+        val sh = stage.height.takeIf { it > 0 } ?: (dm.heightPixels - insets[1] - insets[3] - ctx.px(90))
+        val wide = sw > sh * 1.15f
+
         val tile = Tile(ctx, ctx.px(22).toFloat(), badge = false).apply { bind(p, s, false) }
-        col.addView(tile, LinearLayout.LayoutParams(tileW, -2).apply { topMargin = ctx.px(18) })
-        col.addView(ctx.text(ch.title.uppercase(), 11.5f, Kit.CHAMPAGNE, 500).apply { letterSpacing = 0.2f; gravity = Gravity.CENTER },
-            LinearLayout.LayoutParams(-2, -2).apply { topMargin = ctx.px(18) })
-        col.addView(ctx.text(p.name, 34f, Kit.INK, displayFace = true).apply { gravity = Gravity.CENTER },
-            LinearLayout.LayoutParams(-2, -2).apply { topMargin = ctx.px(4) })
-        val voice = ctx.text(if (s.thirst == Thirst.NEW) "First check. Feel the soil, then tell me." else Personality.thirsty(p), 17f, Kit.INK, 300).apply {
+        val voice = ctx.text(if (s.thirst == Thirst.NEW) "First check. Feel the soil, then tell me." else Personality.thirsty(p), if (wide) 16f else 17f, Kit.INK, 300).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f)
         }
-        col.addView(voice, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(8) })
-        col.addView(ctx.text(Rhythm.dueText(s) + if (p.spot.isNotBlank()) "  ·  ${p.spot}" else "", 13f, Kit.MUTED).apply { gravity = Gravity.CENTER },
+        val words = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        words.addView(ctx.text(ch.title.uppercase(), 11.5f, Kit.CHAMPAGNE, 500).apply { letterSpacing = 0.2f; gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(-2, -2))
+        words.addView(ctx.text(p.name, if (wide) 28f else 34f, Kit.INK, displayFace = true).apply { gravity = Gravity.CENTER },
+            LinearLayout.LayoutParams(-2, -2).apply { topMargin = ctx.px(4) })
+        words.addView(voice, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(8) })
+        words.addView(ctx.text(Rhythm.dueText(s) + if (p.spot.isNotBlank()) "  ·  ${p.spot}" else "", 13f, Kit.MUTED).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(6) })
 
-        val spacer = View(ctx)
-        col.addView(spacer, LinearLayout.LayoutParams(1, 0, 1f))
-        col.addView(ctx.pour("Watered") { act(p, tile, voice, Store.Act.WATERED) }, LinearLayout.LayoutParams(-1, -2))
+        val buttons = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        buttons.addView(ctx.pour("Watered") { act(p, tile, voice, Store.Act.WATERED) }, LinearLayout.LayoutParams(-1, -2))
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(ctx.quiet("Still damp") { act(p, tile, voice, Store.Act.DAMP) }, LinearLayout.LayoutParams(0, -2, 1f))
         row.addView(ctx.quiet("Bone dry") { act(p, tile, voice, Store.Act.DRY) }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = ctx.px(8) })
         row.addView(ctx.quiet("Skip") { if (!busy) { busy = true; skipped++; next() } }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = ctx.px(8) })
-        col.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(10) })
-        return col
+        buttons.addView(row, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(10) })
+
+        // Words scroll if a small screen runs out of room; the buttons always stay in reach
+        fun scrolling(v: View) = android.widget.ScrollView(ctx).apply {
+            isVerticalScrollBarEnabled = false; overScrollMode = View.OVER_SCROLL_NEVER; isFillViewport = true
+            addView(FrameLayout(ctx).apply { addView(v, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER)) })
+        }
+
+        if (wide) {
+            // Landscape: the plant on the left at full height, everything else beside it
+            val tileH = sh - ctx.px(16)
+            val tileW = min(tileH * 4 / 5, (sw * 0.42f).toInt())
+            val rowL = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            rowL.addView(tile, LinearLayout.LayoutParams(tileW, -2))
+            val side = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(ctx.px(24), 0, 0, 0) }
+            side.addView(scrolling(words), LinearLayout.LayoutParams(-1, 0, 1f))
+            side.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(10) })
+            rowL.addView(side, LinearLayout.LayoutParams(0, -1, 1f))
+            return rowL
+        }
+
+        val tileW = min(min(sw, ctx.px(300)), ((sh - ctx.px(320)) * 4 / 5).coerceAtLeast(ctx.px(120)))
+        val colP = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        colP.addView(tile, LinearLayout.LayoutParams(tileW, -2).apply { topMargin = ctx.px(14) })
+        colP.addView(scrolling(words), LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = ctx.px(16) })
+        colP.addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ctx.px(10) })
+        return colP
     }
 
     private fun act(p: Plant, tile: Tile, voice: TextView, a: Store.Act) {
@@ -147,6 +197,7 @@ class RoundView(
     }
 
     private fun finish() {
+        finished = true
         stage.removeAllViews()
         progress.text = "ROUND DONE"
         val now = System.currentTimeMillis()

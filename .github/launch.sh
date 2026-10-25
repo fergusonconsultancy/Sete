@@ -38,6 +38,21 @@ tap_text "Still damp"; sleep 2
 tap_text "Bone dry"; sleep 3
 tap_text "Skip"; sleep 2
 tap_text "Close"; sleep 2
+# Landscape: the round must still show every button
+count() { adb shell run-as $PKG cat files/garden.json | python3 -c "import sys,json;print(sum(len(x['log']) for x in json.load(sys.stdin)['plants']))"; }
+before=$(count)
+adb shell settings put system accelerometer_rotation 0
+adb shell settings put system user_rotation 1
+sleep 2
+adb shell am start -W -n $PKG/.MainActivity --ez round true
+sleep 4
+tap_text "Watered"; sleep 3
+tap_text "Still damp"; sleep 2
+after=$(count)
+if [ "$after" -gt "$before" ]; then echo "::notice::landscape round logged $((after-before)) answers"; else echo "::error::landscape round: buttons not reachable"; fi
+tap_text "Close"; sleep 2
+adb shell settings put system user_rotation 0
+sleep 2
 adb shell am broadcast -a $PKG.ALARM -n $PKG/.ReminderReceiver --es slot morning
 sleep 6
 adb logcat -d > logcat.txt

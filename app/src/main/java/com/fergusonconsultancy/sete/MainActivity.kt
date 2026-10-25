@@ -168,6 +168,16 @@ class MainActivity : Activity() {
         super.onStop()
     }
 
+    /** Turning or unfolding the phone: the garden's column follows the new width. */
+    override fun onConfigurationChanged(c: android.content.res.Configuration) {
+        super.onConfigurationChanged(c)
+        if (crashed || !::screen.isInitialized) return
+        screen.column.layoutParams = (screen.column.layoutParams as FrameLayout.LayoutParams).apply {
+            width = minOf(resources.displayMetrics.widthPixels, px(620))
+        }
+        root.requestApplyInsets()
+    }
+
     override fun onNewIntent(i: Intent) {
         super.onNewIntent(i)
         setIntent(i)
@@ -314,6 +324,8 @@ class MainActivity : Activity() {
             render()
         }
         round = v
+        // Above the floating buttons, which carry their own elevation
+        v.elevation = px(24).toFloat()
         root.addView(v, FrameLayout.LayoutParams(-1, -1))
         v.alpha = 0f; v.translationY = px(30).toFloat()
         v.animate().alpha(1f).translationY(0f).setDuration(320).setInterpolator(Kit.ease).start()
@@ -328,7 +340,7 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(px(18), px(10), px(8), px(10))
             background = rounded(Kit.RAISED, px(26).toFloat(), Kit.HAIRLINE, px(1))
-            elevation = px(12).toFloat()
+            elevation = px(30).toFloat()
             addView(text(msg, 14f, Kit.INK, 400), LinearLayout.LayoutParams(0, -2, 1f))
             if (undo != null) addView(text("Undo", 14f, Kit.CHAMPAGNE, 500).apply {
                 setPadding(px(14), px(8), px(14), px(8))
@@ -378,6 +390,7 @@ class MainActivity : Activity() {
         }
         val maxW = minOf(resources.displayMetrics.widthPixels, px(640))
         host.addView(panel, FrameLayout.LayoutParams(maxW, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { topMargin = barsTop + px(40) })
+        host.elevation = px(20).toFloat()
         root.addView(host, FrameLayout.LayoutParams(-1, -1))
         sheet = host; sheetPanel = panel
         panel.translationY = resources.displayMetrics.heightPixels.toFloat()
