@@ -1,20 +1,18 @@
 name: Probe model
 on: push
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Fetch candidates
+      - name: Fetch labels and model, keep the labels for inspection
         run: |
-          set +e
-          try() { code=$(curl -sL -o "$2" -w '%{http_code}' "$1"); echo "::notice::$code $(stat -c%s "$2" 2>/dev/null) $1"; }
-          try "https://tfhub.dev/google/lite-model/aiy/vision/classifier/plants_V1/3?lite-format=tflite" m1.tflite
-          try "https://www.kaggle.com/api/v1/models/google/aiy/tfLite/vision-classifier-plants-v1/1/download" m2.tgz
-          try "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/aiy/vision/classifier/plants_V1/3.tflite" m3.tflite
-          try "https://www.gstatic.com/aihub/tfhub/labelmaps/aiy_plants_V1_labelmap.csv" labels.csv
-          file m1.tflite m2.tgz m3.tflite labels.csv | while read l; do echo "::notice::$l"; done
-          head -3 labels.csv | while read l; do echo "::notice::$l"; done
-          wc -l labels.csv | while read l; do echo "::notice::$l"; done
-          for g in Spathiphyllum Monstera Philodendron Epipremnum Scindapsus Chlorophytum Sansevieria Zamioculcas Ficus Calathea Goeppertia Maranta Ctenanthe Aloe Haworthia Echeveria Crassula Kalanchoe Schlumbergera Phalaenopsis Dendrobium Cymbidium Anthurium Aglaonema Dieffenbachia Dracaena Yucca Strelitzia Alocasia Begonia Peperomia Pilea Tradescantia Hoya Nephrolepis Asplenium Adiantum Chamaedorea Dypsis Howea Citrus Hedera Aechmea Guzmania Vriesea Tillandsia Saintpaulia Streptocarpus Cyclamen Fittonia Syngonium Oxalis Senecio Curio Ceropegia Euphorbia Beaucarnea Schefflera Heptapleurum Musa Coffea Rhapis Livistona Platycerium Sedum Opuntia Mammillaria Pachira Polyscias; do
-            n=$(grep -ci ",$g " labels.csv); echo "$g:$n"; done | tr '\n' ' ' | fold -w 900 | while read l; do echo "::notice::$l"; done
-          grep -i "Spathiphyllum\|Monstera\|Chlorophytum\|Pilea\|Strelitzia\|Phalaenopsis" labels.csv | head -20 | while read l; do echo "::notice::$l"; done
+          mkdir out && cd out
+          curl -sL -o labels.csv "https://www.gstatic.com/aihub/tfhub/labelmaps/aiy_plants_V1_labelmap.csv"
+          curl -sL -o model.tflite "https://tfhub.dev/google/lite-model/aiy/vision/classifier/plants_V1/3?lite-format=tflite"
+          sha256sum model.tflite > model.sha256; ls -la > files.txt
+          unzip -l model.tflite > model-contents.txt 2>&1 || true
+          git init -q -b labels; git config user.name probe; git config user.email probe@users.noreply.github.com
+          git add labels.csv model.sha256 files.txt model-contents.txt; git commit -qm labels
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" labels
