@@ -97,7 +97,8 @@ adb shell input text orchid; sleep 1
 adb shell input keyevent KEYCODE_ENTER; sleep 2
 shot 12-search
 tap_text "orchid"; sleep 1
-for i in 1 2 3 4 5 6; do adb shell input keyevent KEYCODE_DEL; done
+adb shell input keyevent KEYCODE_MOVE_END
+for i in 1 2 3 4 5 6 7 8; do adb shell input keyevent KEYCODE_DEL; done
 adb shell input keyevent KEYCODE_ENTER; sleep 2
 tap_text "List"; sleep 2
 shot 13-list
