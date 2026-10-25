@@ -540,3 +540,59 @@ class SearchIcon(ctx: Context) : android.graphics.drawable.Drawable() {
     @Deprecated("Deprecated in Java")
     override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
 }
+
+/**
+ * A sheet's scrolling body that can also be pulled down to close. While its content is at the
+ * top, a downward drag moves the whole sheet with the finger; let go far enough or fast enough
+ * and it closes, otherwise it settles back. Scrolling up through long content works as usual.
+ */
+@SuppressLint("ClickableViewAccessibility")
+class SheetScroll(ctx: Context, private val onDrag: (Float) -> Unit, private val onRelease: (Float, Float) -> Unit) : android.widget.ScrollView(ctx) {
+    private val slop = android.view.ViewConfiguration.get(ctx).scaledTouchSlop
+    private var startX = 0f
+    private var startY = 0f
+    private var dragging = false
+    private var lastY = 0f
+    private var lastT = 0L
+    private var velocity = 0f
+
+    override fun onInterceptTouchEvent(e: MotionEvent): Boolean {
+        when (e.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { startX = e.rawX; startY = e.rawY; dragging = false; lastY = e.rawY; lastT = e.eventTime; velocity = 0f }
+            MotionEvent.ACTION_MOVE -> {
+                val dy = e.rawY - startY; val dx = e.rawX - startX
+                if (!dragging && scrollY == 0 && dy > slop && dy > kotlin.math.abs(dx) * 1.2f) {
+                    dragging = true
+                    startY = e.rawY
+                    parent?.requestDisallowInterceptTouchEvent(true)
+                    return true
+                }
+            }
+        }
+        return dragging || super.onInterceptTouchEvent(e)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        if (!dragging) {
+            // Content too short to scroll, or a drag that began on empty space: take it here too
+            if (e.actionMasked == MotionEvent.ACTION_MOVE && scrollY == 0) {
+                val dy = e.rawY - startY
+                if (dy > slop) { dragging = true; startY = e.rawY }
+            }
+            if (!dragging) return super.onTouchEvent(e)
+        }
+        when (e.actionMasked) {
+            MotionEvent.ACTION_MOVE -> {
+                val dt = (e.eventTime - lastT).coerceAtLeast(1)
+                velocity = velocity * 0.4f + ((e.rawY - lastY) / dt * 1000f) * 0.6f
+                lastY = e.rawY; lastT = e.eventTime
+                onDrag((e.rawY - startY).coerceAtLeast(0f))
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                dragging = false
+                onRelease((e.rawY - startY).coerceAtLeast(0f), velocity)
+            }
+        }
+        return true
+    }
+}

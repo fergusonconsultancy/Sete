@@ -115,7 +115,13 @@ tap_text "Settings"; sleep 2
 shot 15-settings
 adb shell input swipe $((W/2)) $((H*7/10)) $((W/2)) $((H*3/10)) 500; sleep 1
 shot 16-settings-garden
-adb shell input keyevent KEYCODE_BACK; sleep 1
+# Pull the sheet down to close it: scroll back to the top first, then drag from the grip
+adb shell input swipe $((W/2)) $((H*3/10)) $((W/2)) $((H*8/10)) 300; sleep 1
+adb shell input swipe $((W/2)) $((H*15/100)) $((W/2)) $((H*85/100)) 450; sleep 2
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb pull /sdcard/ui.xml ui.xml >/dev/null 2>&1
+if grep -q 'Morning round' ui.xml; then echo "::error::pulling the settings sheet down did not close it"; adb shell input keyevent KEYCODE_BACK; sleep 1
+else echo "::notice::pulling the sheet down closed it"; fi
+shot 17-after-pull
 tap_text "Cards"; sleep 1
 
 # Landscape: the round must still show every button

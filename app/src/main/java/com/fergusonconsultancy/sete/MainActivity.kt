@@ -63,7 +63,7 @@ class MainActivity : Activity() {
     private var barsBottom = 0
 
     private var sheet: FrameLayout? = null
-    private var sheetPanel: ScrollView? = null
+    private var sheetPanel: SheetScroll? = null
     private var sheetRefresh: (() -> Unit)? = null
     private var toastView: LinearLayout? = null
     private val hideToast = Runnable { toastView?.animate()?.alpha(0f)?.translationY(px(20).toFloat())?.setDuration(220)?.withEndAction { toastView?.visibility = View.GONE }?.start() }
@@ -519,7 +519,17 @@ class MainActivity : Activity() {
             setPadding(px(22), 0, px(22), barsBottom + px(28))
         }
         body.addView(grip()); build(body)
-        val panel = ScrollView(this).apply {
+        lateinit var panel: SheetScroll
+        panel = SheetScroll(this,
+            onDrag = { d -> panel.translationY = d; scrim.alpha = (1f - d / panel.height.coerceAtLeast(1)).coerceIn(0f, 1f) },
+            onRelease = { d, v ->
+                // Far enough, or flicked: close. Otherwise settle back without a bounce
+                if (d > panel.height * 0.25f || d > px(160) || v > px(1100)) closeSheet()
+                else {
+                    panel.animate().translationY(0f).setDuration(260).setInterpolator(Kit.ease).start()
+                    scrim.animate().alpha(1f).setDuration(260).start()
+                }
+            }).apply {
             isVerticalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
             background = GradientDrawable().apply {
