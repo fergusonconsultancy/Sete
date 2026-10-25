@@ -48,6 +48,7 @@ class MainActivity : Activity() {
     private val cards = HashMap<String, PlantCard>()
     private val main = Handler(Looper.getMainLooper())
     private var holdUntil = 0L
+    private var crashed = false
     private var barsTop = 0
     private var barsBottom = 0
 
@@ -64,6 +65,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(saved: Bundle?) {
         super.onCreate(saved)
+        if (Crash.show(this)) { crashed = true; return }
         Store.init(this)
         Reminders.channel(this)
         Reminders.schedule(this)
@@ -140,12 +142,14 @@ class MainActivity : Activity() {
 
     override fun onStart() {
         super.onStart()
+        if (crashed) return
         Store.listen(onChange)
         Sync.start(this)
         render()
     }
 
     override fun onStop() {
+        if (crashed) { super.onStop(); return }
         Store.unlisten(onChange)
         Sync.stop()
         super.onStop()
@@ -566,6 +570,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (crashed) return
         paintRemindersPill()
         sheetRefresh?.invoke()
     }
