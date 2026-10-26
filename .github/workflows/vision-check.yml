@@ -35,10 +35,10 @@ jobs:
               "required": ["is_plant", "common_name", "latin", "confidence", "summer_days", "how_to_water", "condition", "character_title"]}
           body = {"model": "claude-sonnet-5-5", "max_tokens": 600,
               "tools": [{"name": "record_plant", "description": "Record the identified plant", "input_schema": schema}],
-              "tool_choice": {"type": "tool", "name": "record_plant"},
+              "tool_choice": {"type": "auto"},
               "messages": [{"role": "user", "content": [
                   {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": photo}},
-                  {"type": "text", "text": "Identify this houseplant and fill in record_plant. Plain British English."}]}]}
+                  {"type": "text", "text": "Identify this houseplant. Always answer by calling record_plant, with no other text. Plain British English."}]}]}
           for version in ["2023-06-01", "2026-10-21"]:
             req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST",
               headers={"x-api-key": key, "anthropic-version": version, "content-type": "application/json"})
