@@ -23,7 +23,7 @@ jobs:
               sys.exit("::error::ANTHROPIC_API_KEY is not set as a repository secret (check the name and that it is under Actions secrets).")
           kind = "API key (sk-ant-api03-)" if key.startswith("sk-ant-api") else "admin key (sk-ant-admin), not usable here" if key.startswith("sk-ant-admin") else "OAuth token, not an API key" if key.startswith("sk-ant-oat") else "NOT an Anthropic key: it should start sk-ant-api03-"
           odd = [hex(ord(ch)) for ch in key if not (ch.isascii() and ch.isprintable())]
-          print(f"::notice::Secret: {len(key)} characters, looks like: {kind}. Starts {key[:7]!r}. Unusual characters: {odd or 'none'}")
+          print(f"::notice::Secret: {len(key)} characters, looks like: {kind}. Starts {key[:11]!r}. Unusual characters: {odd or 'none'}")
           photo = base64.b64encode(open("app/src/main/assets/plants/aloe.jpg", "rb").read()).decode()
           schema = {"type": "object", "properties": {
               "is_plant": {"type": "boolean"}, "common_name": {"type": "string"}, "latin": {"type": "string"},
