@@ -22,7 +22,8 @@ android {
         buildConfigField("String", "FIREBASE_APP_ID", "\"${secret("FIREBASE_APP_ID")}\"")
         buildConfigField("String", "FIREBASE_PROJECT_ID", "\"${secret("FIREBASE_PROJECT_ID")}\"")
         // Plant identification with Claude's vision; empty means it is off
-        buildConfigField("String", "ANTHROPIC_API_KEY", "\"${secret("ANTHROPIC_API_KEY")}\"")
+        // The key alone, even if a whole example command was pasted into the secret
+        buildConfigField("String", "ANTHROPIC_API_KEY", "\"${Regex("sk-ant-[A-Za-z0-9_-]+").find(secret("ANTHROPIC_API_KEY"))?.value ?: secret("ANTHROPIC_API_KEY")}\"")
     }
 
     buildFeatures {

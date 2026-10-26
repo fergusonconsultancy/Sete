@@ -75,14 +75,15 @@ object Vision {
         if (!enabled) throw Failure("Identification isn't switched on in this build.")
         val prompt = buildString {
             append("This photo was taken in a home in the UK to add a houseplant to a watering tracker. ")
-            append("Identify the plant and fill in record_plant. Be honest about confidence. Write plain British English, no em dashes.")
+            append("Identify the plant and answer only by calling record_plant, with no other text. Be honest about confidence. Write plain British English, no em dashes.")
             if (!hint.isNullOrBlank()) append(" The owner says this plant is: \"").append(hint.take(80)).append("\". Treat that as the identity and write its care.")
         }
         val body = JSONObject()
             .put("model", MODEL)
             .put("max_tokens", 1200)
             .put("tools", JSONArray().put(JSONObject().put("name", "record_plant").put("description", "Record the identified plant and its care").put("input_schema", schema())))
-            .put("tool_choice", JSONObject().put("type", "tool").put("name", "record_plant"))
+            // Sonnet 5.5 refuses a forced tool_choice, so the prompt asks for the call instead.
+            .put("tool_choice", JSONObject().put("type", "auto"))
             .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", JSONArray()
                 .put(JSONObject().put("type", "image").put("source", JSONObject().put("type", "base64").put("media_type", "image/jpeg").put("data", jpegBase64)))
                 .put(JSONObject().put("type", "text").put("text", prompt)))))

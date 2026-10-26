@@ -53,8 +53,9 @@ jobs:
           tool = next((c for c in reply["content"] if c["type"] == "tool_use"), None)
           if not tool:
               sys.exit("::error::No tool call in the reply: " + json.dumps(reply)[:400])
-          print(json.dumps(tool["input"], indent=2))
+          i = tool["input"]
+          print(f"::notice::Identified: {i.get('common_name')} ({i.get('latin')}), confidence {i.get('confidence')}, every {i.get('summer_days')} days in summer. Condition: {i.get('condition')} Character: {i.get('character_title')}")
           u = reply.get("usage", {})
-          print(f"Tokens: {u.get('input_tokens')} in, {u.get('output_tokens')} out")
+          print(f"::notice::Tokens: {u.get('input_tokens')} in, {u.get('output_tokens')} out")
           print("Key works. Recognition will be on in the next Build APK.")
           EOF
