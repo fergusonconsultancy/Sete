@@ -5,7 +5,7 @@ plugins {
 
 // Firebase sync is optional. Its three values come from GitHub repository secrets
 // (FIREBASE_API_KEY, FIREBASE_APP_ID, FIREBASE_PROJECT_ID). Without them the app works on one phone.
-fun secret(name: String) = (System.getenv(name) ?: "").replace("\"", "")
+fun secret(name: String) = (System.getenv(name) ?: "").replace("\"", "").trim()
 
 android {
     namespace = "com.fergusonconsultancy.sete"
