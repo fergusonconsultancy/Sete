@@ -18,10 +18,13 @@ jobs:
         run: |
           python3 - <<'EOF'
           import base64, json, os, sys, urllib.request, urllib.error
-          key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+          import re
+          raw = os.environ.get("ANTHROPIC_API_KEY", "")
+          m = re.search(r"sk-ant-[A-Za-z0-9_-]+", raw)
+          key = m.group(0) if m else raw.strip()
           if not key:
               sys.exit("::error::ANTHROPIC_API_KEY is not set as a repository secret (check the name and that it is under Actions secrets).")
-          kind = "API key (sk-ant-api03-)" if key.startswith("sk-ant-api") else "admin key (sk-ant-admin), not usable here" if key.startswith("sk-ant-admin") else "OAuth token, not an API key" if key.startswith("sk-ant-oat") else "NOT an Anthropic key: it should start sk-ant-api03-"
+          kind = "API key (sk-ant-api03-)" if key.startswith(("sk-ant-api", "sk-ant-usr")) else "admin key (sk-ant-admin), not usable here" if key.startswith("sk-ant-admin") else "OAuth token, not an API key" if key.startswith("sk-ant-oat") else "NOT an Anthropic key: it should start sk-ant-api03-"
           odd = [hex(ord(ch)) for ch in key if not (ch.isascii() and ch.isprintable())]
           print(f"::notice::Secret: {len(key)} characters, looks like: {kind}. Starts {key[:11]!r}. Unusual characters: {odd or 'none'}")
           photo = base64.b64encode(open("app/src/main/assets/plants/aloe.jpg", "rb").read()).decode()
@@ -36,12 +39,17 @@ jobs:
               "messages": [{"role": "user", "content": [
                   {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": photo}},
                   {"type": "text", "text": "Identify this houseplant and fill in record_plant. Plain British English."}]}]}
-          req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST",
-              headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
-          try:
+          for version in ["2023-06-01", "2026-10-21"]:
+            req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST",
+              headers={"x-api-key": key, "anthropic-version": version, "content-type": "application/json"})
+            try:
               reply = json.load(urllib.request.urlopen(req, timeout=90))
-          except urllib.error.HTTPError as e:
-              sys.exit(f"::error::Anthropic API answered {e.code}: {e.read().decode()[:400]}")
+              print(f"::notice::Works with anthropic-version {version}")
+              break
+            except urllib.error.HTTPError as e:
+              print(f"::warning::anthropic-version {version}: {e.code} {e.read().decode()[:300]}")
+          else:
+              sys.exit("::error::Refused with both versions")
           tool = next((c for c in reply["content"] if c["type"] == "tool_use"), None)
           if not tool:
               sys.exit("::error::No tool call in the reply: " + json.dumps(reply)[:400])
