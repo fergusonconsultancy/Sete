@@ -1,0 +1,49 @@
+name: Vision check
+
+# Sends one bundled plant photo to Claude with the same model, headers and forced tool call
+# the app uses, so a bad or missing ANTHROPIC_API_KEY shows up here rather than on the phone.
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/vision-check.yml"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Identify a known plant
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          python3 - <<'EOF'
+          import base64, json, os, sys, urllib.request, urllib.error
+          key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+          if not key:
+              sys.exit("::error::ANTHROPIC_API_KEY is not set as a repository secret (check the name and that it is under Actions secrets).")
+          photo = base64.b64encode(open("app/src/main/assets/plants/aloe.jpg", "rb").read()).decode()
+          schema = {"type": "object", "properties": {
+              "is_plant": {"type": "boolean"}, "common_name": {"type": "string"}, "latin": {"type": "string"},
+              "confidence": {"type": "number"}, "summer_days": {"type": "integer"},
+              "how_to_water": {"type": "string"}, "condition": {"type": "string"}, "character_title": {"type": "string"}},
+              "required": ["is_plant", "common_name", "latin", "confidence", "summer_days", "how_to_water", "condition", "character_title"]}
+          body = {"model": "claude-sonnet-5-5", "max_tokens": 600,
+              "tools": [{"name": "record_plant", "description": "Record the identified plant", "input_schema": schema}],
+              "tool_choice": {"type": "tool", "name": "record_plant"},
+              "messages": [{"role": "user", "content": [
+                  {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": photo}},
+                  {"type": "text", "text": "Identify this houseplant and fill in record_plant. Plain British English."}]}]}
+          req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=json.dumps(body).encode(), method="POST",
+              headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+          try:
+              reply = json.load(urllib.request.urlopen(req, timeout=90))
+          except urllib.error.HTTPError as e:
+              sys.exit(f"::error::Anthropic API answered {e.code}: {e.read().decode()[:400]}")
+          tool = next((c for c in reply["content"] if c["type"] == "tool_use"), None)
+          if not tool:
+              sys.exit("::error::No tool call in the reply: " + json.dumps(reply)[:400])
+          print(json.dumps(tool["input"], indent=2))
+          u = reply.get("usage", {})
+          print(f"Tokens: {u.get('input_tokens')} in, {u.get('output_tokens')} out")
+          print("Key works. Recognition will be on in the next Build APK.")
+          EOF
